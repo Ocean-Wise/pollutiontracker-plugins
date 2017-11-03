@@ -1,0 +1,4 @@
+*
+!.gitignore
+!/pollution-tracker
+!/pollution-tracker/*
