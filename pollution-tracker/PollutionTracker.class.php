@@ -7,10 +7,15 @@
 class PollutionTracker{
 
     public static function init(){
-
-
+        global $wpdb;
 
         add_shortcode('PTMap', array('PollutionTracker', 'mapShortcode'));
+
+
+        // Request http://domain.org?updateRankings to update contaminant rankings
+        if (isset($_GET['updateRankings'])) {
+            self::updateContaminantRankings();
+        }
     }
 
     public static function enqueueScripts(){
@@ -29,13 +34,14 @@ class PollutionTracker{
         wp_enqueue_script( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.js', array(), '20151215', false );
         wp_enqueue_style( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.css' );
 
+        wp_enqueue_script( 'pt-map', plugin_dir_url(__FILE__) . '/js/pt-map.js', array('jquery'), filemtime(plugin_dir_path( __FILE__ ) . '/js/pt-map.js'), false );
 
 
         wp_enqueue_script( 'leaflet-mapbox', 'http://rawgit.com/mapbox/mapbox-gl-leaflet/master/leaflet-mapbox-gl.js', array(), '20151215', false );
     }
 
     public static function mapShortcode($args){
-        $html = '<div id="map" class="map"></div>';
+        $html = '<div class="map-wrap"></div><div id="map" class="map"></div></div>';
         $script = "<script type=\"text/javascript\">\n";
 
 
@@ -54,72 +60,82 @@ class PollutionTracker{
                 },
                 properties: {
                     title: '" . $site->name . "',
-                    html: '<em>HTML will go here</em>'
+                    html: '<em>HTML will go here</em>',
+                    contaminants: " . json_encode($site->contaminants) . "
                 }},\n";
         }
-        $script .= ']}';
+        $script .= ']};';
 
 
-        $script .= "
-        var map = L.map('map', {
-            center: [49.5,-123.5],
-            zoom: 7,
-            maxZoom: 14,
-            minZoom: 4,
-            maxBounds: L.latLngBounds(L.latLng(60,-141),L.latLng(45,-100)),
-            scrollWheelZoom: false
-        });
-        
-        var gl = L.mapboxGL({
-            accessToken: 'not required',
-            style: '" . plugin_dir_url(__FILE__) . "/map-style.json',
-        }).addTo(map);
-        
-        var markers = L.markerClusterGroup();
-		var geoJsonLayer = L.geoJson(geojson, {
-			onEachFeature: function (feature, layer) {
-				layer.bindPopup('<div class=\"title\">' + feature.properties.title + '</div><div class=\"content\"' + feature.properties.html + '</div>');
-			}
-		});
-		markers.addLayer(geoJsonLayer);
-		map.addLayer(markers);
-		map.fitBounds(markers.getBounds());
-        
-        // So you can scroll the page
-        //map.scrollZoom.disable();
-        
-        // Add zoom and rotation controls to the map.
-        //map.addControl(new mapboxgl.NavigationControl());
-        
-        ";
-
-        $site_data = self::getPointersData();
-
-        $script .= "var geojson = {
-            type: 'FeatureCollection',
-            features: [
-        ";
-
-        foreach($site_data as $site){
-            $script .= "{
-                type: 'Feature',
-                geometry: {
-                    type: 'Point',
-                    coordinates: [" . $site->longitude . "," . $site->latitude . "]
-                },
-                properties: {
-                    title: '" . $site->name . "',
-                    html: '<em>HTML will go here</em>'
-                }},\n";
-        }
-        $script .= ']}';
-
-
-
-
+        $script .= "PollutionTracker.buildMap({id:'map',geojson:geojson, style:'" . plugin_dir_url(__FILE__) . "/map-style.json" . "'});";
 
         $script .= "</script>";
         return $html . $script;
+    }
+
+    public static function updateContaminantRankings(){
+        global $wpdb;
+
+        error_log('Updading contaminate rankings');
+
+        /* Kelsey says: (11/03/2017)
+         * Once all individual contaminants are sorted and ranked in the database,
+         * we’d need to take the average of the rankings for all of the individual ‘legacy pesticides’,
+         * and the same for ‘current use pesticides’ (lists of chemicals to be provided).
+         * This is because for the top 5 ranked contaminants/contaminant classes in the pop-ups,
+         * we’ll show ‘legacy pesticides’ and ‘current use pesticides’ rather than the individual chemicals.
+         * However, for the overall average site ranking, we will calculate the average based on
+         * all of the individual chemical rankings. Hopefully that makes sense.
+         */
+
+        // Apply rankings to all contaminants
+        $contaminants = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE is_group IS NULL');
+        $source_ids = $wpdb->get_col('SELECT DISTINCT source_id FROM wp_contaminant_values;');
+
+        //error_log('Update rankings: ' . print_r($contaminants,true));
+        foreach($source_ids as $source_id) {
+            foreach ($contaminants as $contaminant) {
+                //error_log('Update ' . $source_id . ':' . print_r($contaminant,true));
+                $sql = $wpdb->query("SET @rank:=0;");
+                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d ORDER BY `value` DESC;", $contaminant->id, $source_id);
+                $result = $wpdb->get_results($sql);
+            }
+        }
+
+        // Apply rankings to contaminant groupings
+
+        $sites = $wpdb->get_results('SELECT * FROM wp_sites');
+        foreach($sites as $site){
+            $groups = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE aggregate=1');
+            foreach($groups as $group){
+                $arr_contaminant_ids = $wpdb->get_col("SELECT * FROM wp_contaminants WHERE parent_id=" . $group->id);
+
+                //error_log(print_r($arr_contaminant_ids,true));
+
+                foreach($source_ids as $source_id) {
+                    $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND value IS NOT NULL;";
+                    //error_log($sql);
+
+                    $average_rank = $wpdb->get_col($sql);
+
+                    //error_log(print_r($average_rank,true));
+
+                    $average_rank = $average_rank[0];
+                    if (is_null($average_rank)) $average_rank = 'NULL';
+
+
+
+                    // Upsert value
+                    $sql = "INSERT INTO wp_contaminant_values (site_id, contaminant_id, source_id, rank) VALUES ({$site->id}, {$group->id}, {$source_id}, {$average_rank}) ON DUPLICATE KEY UPDATE rank={$average_rank};";
+
+                    //$sql = str_replace("\n",'',$sql);
+                    //error_log($sql);
+                    $result = $wpdb->get_results($sql);
+
+                }
+            }
+        }
+
     }
 
 
@@ -128,168 +144,37 @@ class PollutionTracker{
 
         $data = [];
         $sites = $wpdb->get_results('SELECT * FROM wp_sites');
+        $arr_contaminants = [];
 
         foreach ($sites as $site){
+            $contaminants = $wpdb->get_results('SELECT wp_contaminants.name AS name, wp_contaminant_values.source_id AS source_id, wp_contaminant_values.value AS value, wp_contaminant_values.rank AS rank FROM wp_contaminant_values JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id WHERE wp_contaminant_values.site_id = ' . $site->id . ' ORDER BY wp_contaminant_values.value DESC');
+
+            foreach ($contaminants as $contaminant){
+                $arr_contaminants[$contaminant->name]['name'] = $contaminant->name;
+                if ($contaminant->source_id==1){
+                    $arr_contaminants[$contaminant->name]['sediment']['value'] = $contaminant->value;
+                    $arr_contaminants[$contaminant->name]['sediment']['rank'] = $contaminant->rank;
+                }else{
+                    $arr_contaminants[$contaminant->name]['muscles']['value'] = $contaminant->value;
+                    $arr_contaminants[$contaminant->name]['muscles']['rank'] = $contaminant->rank;
+                }
+            }
+
+            $arr_contaminants_array = [];
+            foreach ($arr_contaminants as $contaminant){
+                $arr_contaminants_array[] = $contaminant;
+            }
+
+            //error_log(print_r($arr_contaminants_array,true));
+
             $site_data = new stdClass();
             $site_data->name = $site->name;
             $site_data->longitude = $site->longitude;
             $site_data->latitude = $site->latitude;
-            $site_data->contaminants = array();
-
+            $site_data->contaminants = $arr_contaminants_array;
             array_push($data, $site_data);
         }
 
         return $data;
     }
 }
-
-
-/*public static function mapShortcode($args){
-        $html = '<div id="map" class="map"></div>';
-        $script = "<script type=\"text/javascript\">\n";
-
-        $script .= "
-        var map = new mapboxgl.Map({
-            container: 'map',
-            style: '" . plugin_dir_url(__FILE__) . "/map-style.json',
-            center: [-123.5, 49.5],
-            zoom: 7
-        });
-
-        // So you can scroll the page
-        map.scrollZoom.disable();
-
-        // Add zoom and rotation controls to the map.
-        map.addControl(new mapboxgl.NavigationControl());
-
-        ";
-
-        $site_data = self::getPointersData();
-
-        $script .= "var geojson = {
-            type: 'FeatureCollection',
-            features: [
-        ";
-
-        foreach($site_data as $site){
-            $script .= "{
-                type: 'Feature',
-                geometry: {
-                    type: 'Point',
-                    coordinates: [" . $site->longitude . "," . $site->latitude . "]
-                },
-                properties: {
-                    title: '" . $site->name . "',
-                    html: '<em>HTML will go here</em>'
-                }},\n";
-        }
-        $script .= ']}';
-
-
-        $script .= "
-        map.on('load', function() {
-            map.addSource(\"sites\", {
-                type: \"geojson\",
-                data: geojson,
-                cluster: true,
-                clusterMaxZoom: 14, // Max zoom to cluster points on
-                clusterRadius: 50 // Radius of each cluster when clustering points (defaults to 50)
-            });
-
-
-            map.addLayer({
-                id: \"clusters\",
-                type: \"circle\",
-                source: \"sites\",
-                filter: [\"has\", \"point_count\"],
-                paint: {
-                    \"circle-color\": {
-                        property: \"point_count\",
-                        type: \"interval\",
-                        stops: [
-                            [0, \"#51bbd6\"],
-                            [100, \"#f1f075\"],
-                            [750, \"#f28cb1\"],
-                        ]
-                    },
-                    \"circle-radius\": {
-                        property: \"point_count\",
-                        type: \"interval\",
-                        stops: [
-                            [0, 20],
-                            [100, 30],
-                            [750, 40]
-                        ]
-                    }
-                }
-            });
-
-            /*map.addLayer({
-                id: \"cluster-count\",
-                type: \"symbol\",
-                source: \"sites\",
-                filter: [\"has\", \"point_count\"],
-                layout: {
-                    'text-field': \"{point_count_abbreviated}\",
-                    //text-font: ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-                    'text-size': 12
-                }
-            });*/
-
-/*
-map.addLayer({
-                id: \"unclustered-point\",
-                type: \"circle\",
-                source: \"sites\",
-                filter: [\"!has\", \"point_count\"],
-                paint: {
-                    \"circle-color\": \"#11b4da\",
-                    \"circle-radius\": 4,
-                    \"circle-stroke-width\": 1,
-                    \"circle-stroke-color\": \"#fff\"
-                }
-            });
-        });
-
-        var popup = new mapboxgl.Popup({
-          closeButton: false,
-          closeOnClick: false
-        });
-
-        function showPopup(location, layer, fields) {
-          var identifiedFeatures = map.queryRenderedFeatures(location.point, layer);
-          console.log('features:',identifiedFeatures);
-          popup.remove();
-          if (identifiedFeatures && identifiedFeatures.length) {
-            var popupContents = safeRead(identifiedFeatures, '0', 'properties', 'html');
-            var popupHTML = '<div class=\"mapPopup\">' + popupContents + '</div>';
-            popup.setLngLat(location.lngLat)
-              .setHTML(popupHTML)
-              .addTo(map);
-          }
-        }
-
-        map.on('click', function(e) {
-          showPopup(e, 'unclustered-point');
-        });
-
-        map.on('mouseenter', 'unclustered-point', function(e) {
-            // Change the cursor style as a UI indicator.
-            map.getCanvas().style.cursor = 'pointer';
-
-
-        });
-
-        map.on('mouseleave', 'unclustered-point', function() {
-            map.getCanvas().style.cursor = 'default';
-            popup.remove();
-        });
-
-        ";
-
-
-        $script .= "</script>";
-        return $html . $script;
-    }
-    */
-
