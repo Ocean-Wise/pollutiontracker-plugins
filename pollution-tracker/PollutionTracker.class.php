@@ -11,6 +11,10 @@ class PollutionTracker{
 
         add_shortcode('PTMap', array('PollutionTracker', 'mapShortcode'));
 
+        add_action( 'add_meta_boxes', array('PollutionTracker','addContaminantMetaBox') );
+        add_action( 'save_post', array('PollutionTracker', 'savePost' ));
+
+
 
         // Request http://domain.org?updateRankings to update contaminant rankings
         if (isset($_GET['updateRankings'])) {
@@ -41,7 +45,7 @@ class PollutionTracker{
     }
 
     public static function mapShortcode($args){
-        $html = '<div class="map-wrap"></div><div id="map" class="map"></div></div>';
+        $html = '<div class="map-wrap"><div class="close-bar">Close map</div><div id="map" class="map"></div><div class="panel"></div></div>';
         $script = "<script type=\"text/javascript\">\n";
 
 
@@ -103,35 +107,23 @@ class PollutionTracker{
         }
 
         // Apply rankings to contaminant groupings
-
         $sites = $wpdb->get_results('SELECT * FROM wp_sites');
         foreach($sites as $site){
             $groups = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE aggregate=1');
             foreach($groups as $group){
                 $arr_contaminant_ids = $wpdb->get_col("SELECT * FROM wp_contaminants WHERE parent_id=" . $group->id);
 
-                //error_log(print_r($arr_contaminant_ids,true));
-
                 foreach($source_ids as $source_id) {
                     $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND value IS NOT NULL;";
-                    //error_log($sql);
-
                     $average_rank = $wpdb->get_col($sql);
-
-                    //error_log(print_r($average_rank,true));
 
                     $average_rank = $average_rank[0];
                     if (is_null($average_rank)) $average_rank = 'NULL';
 
-
-
                     // Upsert value
                     $sql = "INSERT INTO wp_contaminant_values (site_id, contaminant_id, source_id, rank) VALUES ({$site->id}, {$group->id}, {$source_id}, {$average_rank}) ON DUPLICATE KEY UPDATE rank={$average_rank};";
-
-                    //$sql = str_replace("\n",'',$sql);
                     //error_log($sql);
                     $result = $wpdb->get_results($sql);
-
                 }
             }
         }
@@ -177,4 +169,82 @@ class PollutionTracker{
 
         return $data;
     }
+
+    public static function getContaminantValues($args){
+        global $wpdb;
+
+        $sites = $wpdb->get_results('SELECT * FROM wp_sites ORDER BY latitude;');
+
+        $sql = $wpdb->prepare("SELECT s.name, s.id, v.value, v.rank FROM wp_contaminant_values v JOIN wp_sites s ON v.site_id = s.id WHERE v.id=%d", $args['contaminant_id']);
+        $result = $wpdb->get_results($sql);
+
+        return $result;
+
+    }
+
+    /**
+     * Adds the meta box to the page screen
+     */
+    public static function addContaminantMetaBox(){
+        if (get_page_template_slug() == 'page-contaminant.php') {
+            add_meta_box(
+                'contaminant-meta-box', // id, used as the html id att
+                __('Contaminant'), // meta box title, like "Page Attributes"
+                array('PollutionTracker', 'metaBoxCB'), // callback function, spits out the content
+                'page', // post type or page. We'll add this to pages only
+                'side', // context (where on the screen
+                'low' // priority, where should this go in the context?
+            );
+        }
+    }
+
+    /**
+     * Callback function for our meta box.  Echos out the content
+     */
+    function metaBoxCB( $post )
+    {
+        global $post, $wpdb;
+
+        $values = get_post_custom( $post->ID );
+        $contaminant = isset( $values['contaminant_id'] ) ? array_pop($values['contaminant_id']) : '';
+        $contaminants = $wpdb->get_results("SELECT * FROM wp_contaminants ORDER BY name");
+
+        wp_nonce_field( 'my_meta_box_nonce', 'meta_box_nonce' );
+
+        error_log("Current:" . print_r($contaminant,true));
+
+        echo '<select name="contaminant_id">';
+        foreach($contaminants as $item){
+            echo "<option value='{$item->id}'" . (($item->id==$contaminant)?' selected':'') . ">{$item->name}</option>";
+        }
+        echo '</select>';
+
+    }
+
+    public static function savePost( $post_id ){
+        global $wpdb;
+
+        $contaminants = $wpdb->get_results("SELECT * FROM wp_contaminants ORDER BY name");
+
+        // Bail if we're doing an auto save
+        if( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
+
+        // if our nonce isn't there, or we can't verify it, bail
+        if( !isset( $_POST['meta_box_nonce'] ) || !wp_verify_nonce( $_POST['meta_box_nonce'], 'my_meta_box_nonce' ) ) return;
+
+        // if our current user can't edit this post, bail
+        if( !current_user_can( 'edit_post' ) ) return;
+
+        $contaminant_id = null;
+        foreach ($contaminants as $contaminant) {
+            if ($contaminant->id == $_POST['contaminant_id']) $contaminant_id = $contaminant->id;
+        }
+
+        error_log("Save contaminant: " . $contaminant_id);
+
+        if( $contaminant_id ) {
+            update_post_meta($post_id, 'contaminant_id', $contaminant_id);
+        }
+    }
+
 }
