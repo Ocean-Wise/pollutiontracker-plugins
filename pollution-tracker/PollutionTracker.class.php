@@ -211,8 +211,6 @@ class PollutionTracker{
 
         wp_nonce_field( 'my_meta_box_nonce', 'meta_box_nonce' );
 
-        error_log("Current:" . print_r($contaminant,true));
-
         echo '<select name="contaminant_id">';
         foreach($contaminants as $item){
             echo "<option value='{$item->id}'" . (($item->id==$contaminant)?' selected':'') . ">{$item->name}</option>";
@@ -240,11 +238,52 @@ class PollutionTracker{
             if ($contaminant->id == $_POST['contaminant_id']) $contaminant_id = $contaminant->id;
         }
 
-        error_log("Save contaminant: " . $contaminant_id);
+        //error_log("Save contaminant: " . $contaminant_id);
 
         if( $contaminant_id ) {
             update_post_meta($post_id, 'contaminant_id', $contaminant_id);
+            $slug = get_post_field( 'post_name', $post_id );
+            error_log("Set contaminant_id to {$contaminant_id} for page: {$slug}");
+            if ($slug) {
+                $wpdb->query("UPDATE wp_contaminants SET slug='" . $slug . "' WHERE id=$contaminant_id;");
+            }
         }
     }
 
+}
+
+
+class PTWalker extends Walker{
+
+    var $tree_type = array('post_type', 'taxonomy', 'custom');
+
+    // Tell Walker where to inherit it's parent and id values
+    var $db_fields = array(
+        'parent' => 'parent_id',
+        'id'     => 'id'
+    );
+
+    /**
+     * At the start of each element, output a <li> and <a> tag structure.
+     *
+     * Note: Menu objects include url and title properties, so we will use those.
+     */
+    function start_el( &$output, $item, $depth = 0, $args = array(), $id = 0 ) {
+        //print_r($item);
+        $output .= sprintf( "\n<li><a href='/contaminants/%s'%s>%s</a></li>\n",
+            $item->slug,
+            ( $item->object_id === get_the_ID() ) ? ' class="current"' : '',
+            $item->name
+        );
+    }
+
+    function start_lvl(&$output, $depth=0, $args=array()) {
+        $output .= "\n<ul>\n";
+    }
+
+    // Displays end of a level. E.g '</ul>'
+    // @see Walker::end_lvl()
+    function end_lvl(&$output, $depth=0, $args=array()) {
+        $output .= "</ul>\n";
+    }
 }
