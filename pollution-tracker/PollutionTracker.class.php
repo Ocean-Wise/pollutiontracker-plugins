@@ -139,7 +139,7 @@ class PollutionTracker{
         $arr_contaminants = [];
 
         foreach ($sites as $site){
-            $contaminants = $wpdb->get_results('SELECT wp_contaminants.name AS name, wp_contaminant_values.source_id AS source_id, wp_contaminant_values.value AS value, wp_contaminant_values.rank AS rank FROM wp_contaminant_values JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id WHERE wp_contaminant_values.site_id = ' . $site->id . ' ORDER BY wp_contaminant_values.value DESC');
+            $contaminants = $wpdb->get_results('SELECT wp_contaminants.name AS name, wp_contaminant_values.source_id AS source_id, wp_contaminant_values.value AS value, wp_contaminant_values.rank AS rank FROM wp_contaminant_values JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id WHERE wp_contaminants.parent_id NOT IN(37,39) AND wp_contaminant_values.site_id = ' . $site->id . ' ORDER BY wp_contaminant_values.rank ASC');
 
             foreach ($contaminants as $contaminant){
                 $arr_contaminants[$contaminant->name]['name'] = $contaminant->name;
