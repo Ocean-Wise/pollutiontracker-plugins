@@ -34,7 +34,6 @@ class PollutionTracker{
         wp_enqueue_script( 'leaflet-clusterer', 'https://unpkg.com/leaflet.markercluster@1.1.0/dist/leaflet.markercluster.js', array(), '20151215', false );
         wp_enqueue_style( 'leaflet-clusterer', plugin_dir_url(__FILE__) . '/css/MarkerCluster.css' );
 
-
         wp_enqueue_script( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.js', array(), '20151215', false );
         wp_enqueue_style( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.css' );
 
@@ -45,17 +44,18 @@ class PollutionTracker{
     }
 
     public static function mapShortcode($args){
-        $html = '<div class="map-wrap"><div class="close-bar">Close map</div><div id="map" class="map"></div><div class="panel"></div></div>';
+        $html = '<div class="map-wrap"><div class="close-bar">Click here to close this map</div><div id="map" class="map"></div><div class="panel"></div></div>';
         $script = "<script type=\"text/javascript\">\n";
 
 
         $site_data = self::getPointersData();
         $script .= "var geojson = {
             type: 'FeatureCollection',
+            counts:{sediment:" . $site_data['sediment_contaminant_count'] . ",muscles:" . $site_data['muscles_contaminant_count'] . "},
             features: [
         ";
 
-        foreach($site_data as $site){
+        foreach($site_data['sites'] as $site){
             $script .= "{
                 type: 'Feature',
                 geometry: {
@@ -65,6 +65,7 @@ class PollutionTracker{
                 properties: {
                     title: '" . $site->name . "',
                     html: '<em>HTML will go here</em>',
+                    sampling_date: '" . (($site->sampling_date)?date('F j, Y', strtotime($site->sampling_date)):'') . "',
                     contaminants: " . json_encode($site->contaminants) . "
                 }},\n";
         }
@@ -90,6 +91,24 @@ class PollutionTracker{
          * we’ll show ‘legacy pesticides’ and ‘current use pesticides’ rather than the individual chemicals.
          * However, for the overall average site ranking, we will calculate the average based on
          * all of the individual chemical rankings. Hopefully that makes sense.
+         *
+         * 1.	Looking at the data spreadsheets, there are four categories of sites:
+                o	Those with measured contaminant concentrations
+                o	Those that weren’t analyzed for a given contaminant (NA)
+                o	Those that were analyzed, but the contaminant wasn’t detected in the sample (ND), meaning that the concentration could be anywhere from 0 to the lowest concentration that the lab’s instruments can detect
+                o	Those for which a contaminant was detected, but once blank-corrected, the concentration was zero. The lab runs a blank that theoretically should not contain the contaminant; however, if & when the contaminant is detected in the blank, we subtracted this blank concentration from the sample concentration (and sometimes this resulted in a sample concentration equal to or less than zero). These are shown as ‘0’ in the spreadsheet.
+
+         *
+         * Data:
+            0: 0
+            NA (not analyzed): null
+            ND (not detected): -1
+
+
+
+        source_ids
+            1: Sediment
+            2: Muscles
          */
 
         // Apply rankings to all contaminants
@@ -97,16 +116,24 @@ class PollutionTracker{
         $source_ids = $wpdb->get_col('SELECT DISTINCT source_id FROM wp_contaminant_values;');
 
         //error_log('Update rankings: ' . print_r($contaminants,true));
+
+        $wpdb->query("UPDATE wp_contaminant_values SET rank=NULL;");
+
+
         foreach($source_ids as $source_id) {
             foreach ($contaminants as $contaminant) {
                 //error_log('Update ' . $source_id . ':' . print_r($contaminant,true));
                 $sql = $wpdb->query("SET @rank:=0;");
-                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d ORDER BY `value` DESC;", $contaminant->id, $source_id);
+                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d AND value >=0 ORDER BY `value` DESC;", $contaminant->id, $source_id);
                 $result = $wpdb->get_results($sql);
             }
         }
 
         // Apply rankings to contaminant groupings
+
+        /* However, for the overall average site ranking, we will calculate the average based on
+        * all of the individual chemical rankings. Hopefully that makes sense.*/
+
         $sites = $wpdb->get_results('SELECT * FROM wp_sites');
         foreach($sites as $site){
             $groups = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE aggregate=1');
@@ -114,10 +141,11 @@ class PollutionTracker{
                 $arr_contaminant_ids = $wpdb->get_col("SELECT * FROM wp_contaminants WHERE parent_id=" . $group->id);
 
                 foreach($source_ids as $source_id) {
-                    $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND value IS NOT NULL;";
+                    $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND (value >=0 OR value=-1);";
                     $average_rank = $wpdb->get_col($sql);
 
                     $average_rank = $average_rank[0];
+                    //echo $average_rank . "\n";
                     if (is_null($average_rank)) $average_rank = 'NULL';
 
                     // Upsert value
@@ -128,27 +156,56 @@ class PollutionTracker{
             }
         }
 
+        // Update site rankings
+        // Out of all 51 sites, average the individual contaminant rankings
+
+        // Problem: some contaminants won't have a ranking at every site.
+
+        // We could have multiple sites with the same rank
+
+        foreach($sites as $site){
+            $result = "SELECT avgerage(rank) from wp_contaminant_values WHERE ";
+        }
+
     }
 
 
     public static function getPointersData(){
         global $wpdb;
 
-        $data = [];
+        $data = ['sites'=>[]];
         $sites = $wpdb->get_results('SELECT * FROM wp_sites');
         $arr_contaminants = [];
+        $arr_sediments = [];
+        $arr_muscles = [];
 
         foreach ($sites as $site){
-            $contaminants = $wpdb->get_results('SELECT wp_contaminants.name AS name, wp_contaminant_values.source_id AS source_id, wp_contaminant_values.value AS value, wp_contaminant_values.rank AS rank FROM wp_contaminant_values JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id WHERE wp_contaminants.parent_id NOT IN(37,39) AND wp_contaminant_values.site_id = ' . $site->id . ' ORDER BY wp_contaminant_values.rank ASC');
+            $contaminants = $wpdb->get_results('SELECT 
+                    wp_contaminants.id AS id,
+                    wp_contaminants.name AS name,
+                    wp_contaminant_values.source_id AS source_id,
+                    wp_contaminant_values.value AS value,
+                    wp_contaminant_values.rank AS rank
+                FROM wp_contaminant_values 
+                JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id 
+                WHERE
+                    wp_contaminants.parent_id NOT IN(37,39) AND
+                    wp_contaminant_values.site_id = ' . $site->id . ' AND
+                    wp_contaminant_values.rank IS NOT NULL
+                ORDER BY wp_contaminant_values.rank ASC');
 
+            $arr_contaminants = [];
             foreach ($contaminants as $contaminant){
                 $arr_contaminants[$contaminant->name]['name'] = $contaminant->name;
                 if ($contaminant->source_id==1){
                     $arr_contaminants[$contaminant->name]['sediment']['value'] = $contaminant->value;
                     $arr_contaminants[$contaminant->name]['sediment']['rank'] = $contaminant->rank;
+                    if (!in_array($site->id, $arr_sediments)) array_push($arr_sediments, $site->id);
                 }else{
                     $arr_contaminants[$contaminant->name]['muscles']['value'] = $contaminant->value;
                     $arr_contaminants[$contaminant->name]['muscles']['rank'] = $contaminant->rank;
+                    if (!in_array($site->id, $arr_muscles)) array_push($arr_muscles, $site->id);
+
                 }
             }
 
@@ -163,10 +220,13 @@ class PollutionTracker{
             $site_data->name = $site->name;
             $site_data->longitude = $site->longitude;
             $site_data->latitude = $site->latitude;
+            $site_data->sampling_date = $site->sampling_date;
             $site_data->contaminants = $arr_contaminants_array;
-            array_push($data, $site_data);
+            array_push($data['sites'], $site_data);
         }
 
+        $data['sediment_contaminant_count'] = count($arr_sediments);
+        $data['muscles_contaminant_count'] = count($arr_muscles);
         return $data;
     }
 
@@ -175,8 +235,10 @@ class PollutionTracker{
 
         $sites = $wpdb->get_results('SELECT * FROM wp_sites ORDER BY latitude;');
 
-        $sql = $wpdb->prepare("SELECT s.name, s.id, v.value, v.rank FROM wp_contaminant_values v JOIN wp_sites s ON v.site_id = s.id WHERE v.id=%d", $args['contaminant_id']);
+        $sql = $wpdb->prepare("SELECT s.name, s.id, v.value, v.rank FROM wp_sites s LEFT JOIN wp_contaminant_values v ON v.site_id = s.id WHERE v.source_id=%d AND v.contaminant_id=%d ORDER BY s.sort", $args['source_id'], $args['contaminant_id']);
         $result = $wpdb->get_results($sql);
+        //error_log($sql);
+        //error_log(print_r($result,true));;
 
         return $result;
 
