@@ -10,6 +10,8 @@ class PollutionTracker{
         global $wpdb;
 
         add_shortcode('PTMap', array('PollutionTracker', 'mapShortcode'));
+        add_shortcode('PTContaminantMenu', array('PollutionTracker', 'contaminantMenuShortcode'));
+
 
         add_action( 'add_meta_boxes', array('PollutionTracker','addContaminantMetaBox') );
         add_action( 'save_post', array('PollutionTracker', 'savePost' ));
@@ -28,10 +30,10 @@ class PollutionTracker{
         // Can't just use mapbox since it can't custer html markers/popups
         // Edit map style here: http://editor.openmaptiles.org
 
-        wp_enqueue_script( 'leaflet', 'https://unpkg.com/leaflet@1.0.3/dist/leaflet.js', array(), '20151215', false );
+        wp_enqueue_script( 'leaflet', 'https://unpkg.com/leaflet@1.2.0/dist/leaflet.js', array(), '20151215', false );
         wp_enqueue_style( 'leaflet', 'https://unpkg.com/leaflet@1.2.0/dist/leaflet.css' );
 
-        wp_enqueue_script( 'leaflet-clusterer', 'https://unpkg.com/leaflet.markercluster@1.1.0/dist/leaflet.markercluster.js', array(), '20151215', false );
+        wp_enqueue_script( 'leaflet-clusterer', 'https://unpkg.com/leaflet.markercluster@1.2.0/dist/leaflet.markercluster.js', array(), '20151215', false );
         wp_enqueue_style( 'leaflet-clusterer', plugin_dir_url(__FILE__) . '/css/MarkerCluster.css' );
 
         wp_enqueue_script( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.js', array(), '20151215', false );
@@ -51,7 +53,7 @@ class PollutionTracker{
         $site_data = self::getPointersData();
         $script .= "var geojson = {
             type: 'FeatureCollection',
-            counts:{sediment:" . $site_data['sediment_contaminant_count'] . ",muscles:" . $site_data['muscles_contaminant_count'] . "},
+            counts:{sediment:" . $site_data['sediment_contaminant_count'] . ",mussels:" . $site_data['mussels_contaminant_count'] . "},
             features: [
         ";
 
@@ -64,18 +66,28 @@ class PollutionTracker{
                 },
                 properties: {
                     title: '" . $site->name . "',
+                    site_id: '" . $site->site_id . "',
                     html: '<em>HTML will go here</em>',
                     sampling_date: '" . (($site->sampling_date)?date('F j, Y', strtotime($site->sampling_date)):'') . "',
+                    sediment_rank: " . (($site->sediment_rank)?$site->sediment_rank:'null') . ",
+                    mussels_rank: " . (($site->mussels_rank)?$site->mussels_rank:'null') . ",
                     contaminants: " . json_encode($site->contaminants) . "
                 }},\n";
         }
         $script .= ']};';
 
 
-        $script .= "PollutionTracker.buildMap({id:'map',geojson:geojson, style:'" . plugin_dir_url(__FILE__) . "/map-style.json" . "'});";
+        //$script .= "PollutionTracker.buildMap({id:'map',geojson:geojson, style:'/wp-content/plugins/pollution-tracker/map-style.json" . "'});";
 
         $script .= "</script>";
         return $html . $script;
+    }
+
+    public static function contaminantMenuShortcode($args){
+        global $wpdb;
+        $contaminants = $wpdb->get_results("SELECT * FROM wp_contaminants ORDER BY name;");
+        $walker = new PTWalker();
+        return $walker->walk($contaminants, 3);
     }
 
     public static function updateContaminantRankings(){
@@ -108,7 +120,7 @@ class PollutionTracker{
 
         source_ids
             1: Sediment
-            2: Muscles
+            2: mussels
          */
 
         // Apply rankings to all contaminants
@@ -123,17 +135,33 @@ class PollutionTracker{
         foreach($source_ids as $source_id) {
             foreach ($contaminants as $contaminant) {
                 //error_log('Update ' . $source_id . ':' . print_r($contaminant,true));
-                $sql = $wpdb->query("SET @rank:=0;");
-                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d AND value >=0 ORDER BY `value` DESC;", $contaminant->id, $source_id);
+                $wpdb->query("SET @rank:=0;");
+                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d AND value >0 ORDER BY `value` DESC;", $contaminant->id, $source_id);
                 $result = $wpdb->get_results($sql);
+
+
+
+                // Get what the max rank should be
+                $sql = $wpdb->prepare('SELECT COUNT(*) AS max_rank FROM wp_contaminant_values WHERE value > 0 AND contaminant_id=%d AND source_id=%d;', $contaminant->id, $source_id);
+                $result = $wpdb->get_results($sql);
+                $max_rank = $result[0]->max_rank;
+                //echo "{$contaminant->name} : $max_rank\n";
+
+                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=%d WHERE value >=0 AND contaminant_id=%d AND source_id=%d AND rank IS NULL;", $max_rank+1, $contaminant->id, $source_id);
+                $result = $wpdb->get_results($sql);
+
+
             }
         }
 
         // Apply rankings to contaminant groupings
 
-        /* However, for the overall average site ranking, we will calculate the average based on
-        * all of the individual chemical rankings. Hopefully that makes sense.*/
-
+        /*Once all individual contaminants are sorted and ranked in the database,
+         * we’d need to take the average of the rankings for all of the individual ‘legacy pesticides’,
+         * and the same for ‘current use pesticides’ (lists of chemicals to be provided).
+         * This is because for the top 5 ranked contaminants/contaminant classes in the pop-ups,
+         * we’ll show ‘legacy pesticides’ and ‘current use pesticides’ rather than the individual chemicals.
+        */
         $sites = $wpdb->get_results('SELECT * FROM wp_sites');
         foreach($sites as $site){
             $groups = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE aggregate=1');
@@ -141,7 +169,7 @@ class PollutionTracker{
                 $arr_contaminant_ids = $wpdb->get_col("SELECT * FROM wp_contaminants WHERE parent_id=" . $group->id);
 
                 foreach($source_ids as $source_id) {
-                    $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND (value >=0 OR value=-1);";
+                    $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND value IS NOT NULL;";
                     $average_rank = $wpdb->get_col($sql);
 
                     $average_rank = $average_rank[0];
@@ -152,20 +180,119 @@ class PollutionTracker{
                     $sql = "INSERT INTO wp_contaminant_values (site_id, contaminant_id, source_id, rank) VALUES ({$site->id}, {$group->id}, {$source_id}, {$average_rank}) ON DUPLICATE KEY UPDATE rank={$average_rank};";
                     //error_log($sql);
                     $result = $wpdb->get_results($sql);
+
+                    // Update aggregate values
+                    $sql = $wpdb->prepare("SELECT SUM(value) AS value FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id);
+                    $value = $wpdb->get_col($sql);
+                    $value = $value[0];
+
+                    $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET value=%f WHERE contaminant_id=%d AND site_id=%d AND source_id=%d", $value, $group->id, $site->id, $source_id);
+                    $wpdb->get_results($sql);
+
                 }
             }
         }
 
-        // Update site rankings
+        /* DOING SOMETHING LIKE THIS MIGHT MAKE THE RANKINGS LOOK NICER
+        // The previous gives us rankings that don't necessarily start at 1.
+        // So let's stretch the values so the lowest one is transformed to 1, and the others get an appropriate scale applied
+        $sql = $wpdb->prepare('SELECT MIN(rank) AS min_rank FROM wp_contaminant_values WHERE contaminant_id=%d AND source_id=%d;', $contaminant->id, $source_id);
+        $result = $wpdb->get_results($sql);
+        $min_rank = $result[0]->min_rank;
+
+        $sql = $wpdb->prepare('SELECT MAX(rank) AS max_rank FROM wp_contaminant_values WHERE contaminant_id=%d AND source_id=%d;', $contaminant->id, $source_id);
+        $result = $wpdb->get_results($sql);
+        $max_rank = $result[0]->max_rank;
+
+        $scale = $min_rank/$max_rank;
+
+        rank = rank / $min_rank * $scale;
+        */
+
+
+
         // Out of all 51 sites, average the individual contaminant rankings
+        /* However, for the overall average site ranking, we will calculate the average based on
+        * all of the individual chemical rankings. Hopefully that makes sense.*/
+
 
         // Problem: some contaminants won't have a ranking at every site.
 
-        // We could have multiple sites with the same rank
+        // Clear old ranking data
+        $wpdb->query("UPDATE wp_sites SET sediment_rank=NULL, mussels_rank=NULL, sediment_average_rank=null, mussels_average_rank=null;");
 
-        foreach($sites as $site){
-            $result = "SELECT avgerage(rank) from wp_contaminant_values WHERE ";
+        // Get average rank for each item as a float
+        foreach($source_ids as $source_id) {
+            foreach ($sites as $site) {
+                $sql = "SELECT AVG(rank) as rank
+                    FROM wp_contaminant_values v
+                    JOIN wp_contaminants c ON v.contaminant_id = c.id
+                    WHERE
+                    site_id=" . $site->id . " AND
+                    source_id=" . $source_id . " AND
+                    c.is_group IS NULL AND
+                    value >0;";
+                $average_rank = $wpdb->get_col($sql);
+                $average_rank = $average_rank[0];
+
+                $column = null;
+                if ($source_id == 1) $column = 'sediment';
+                if ($source_id == 2) $column = 'mussels';
+
+                if ($column) {
+                    $sql = $wpdb->prepare("
+                    UPDATE wp_sites s
+                    SET " . $column . "_average_rank=%f
+                    WHERE 
+                        id=%d", $average_rank, $site->id);
+                    $wpdb->query($sql);
+                }
+            }
         }
+
+        // Then update sorted rank for sites
+        foreach($source_ids as $source_id) {
+            $column = null;
+            if ($source_id == 1) $column = 'sediment';
+            if ($source_id == 2) $column = 'mussels';
+
+            if ($column) {
+                $wpdb->query("SET @rank:=0;");
+                $sql = $wpdb->prepare("UPDATE wp_sites SET " . $column . '_rank=@rank:=@rank+1 WHERE ' . $column . '_average_rank>0 ORDER BY ' . $column . '_average_rank ASC;', $contaminant->id, $source_id);
+                $wpdb->query($sql);
+            }
+        }
+
+
+        /*
+        foreach ($contaminants as $contaminant) {
+            foreach($source_ids as $source_id) {
+                $column = null;
+                if ($source_id==1) $column = 'sediment_rank';
+                if ($source_id==2) $column = 'mussels_rank';
+
+                if ($column) {
+                    // Update sediment ranks
+                    $wpdb->query("SET @rank:=0;");
+                    $sql = $wpdb->prepare("
+                        UPDATE wp_sites s
+                        JOIN
+                        (
+                            SELECT v.* FROM wp_contaminant_values v
+                            JOIN wp_contaminants c ON v.contaminant_id = c.id
+                            WHERE
+                            v.contaminant_id=%d AND
+                            v.source_id=%d AND
+                            c.is_group IS NULL
+                            ORDER BY value DESC
+                        ) v
+                        ON v.site_id = s.id
+                        SET
+                            s." . $column . "=@rank:=@rank+1
+                        ", $contaminant->id, $source_id);
+                    $result = $wpdb->get_results($sql);
+                }
+            }*/
 
     }
 
@@ -177,15 +304,19 @@ class PollutionTracker{
         $sites = $wpdb->get_results('SELECT * FROM wp_sites');
         $arr_contaminants = [];
         $arr_sediments = [];
-        $arr_muscles = [];
+        $arr_mussels = [];
+
+        //echo "Sites:" . count($sites);
 
         foreach ($sites as $site){
             $contaminants = $wpdb->get_results('SELECT 
                     wp_contaminants.id AS id,
                     wp_contaminants.name AS name,
+                    wp_contaminants.slug AS slug,
                     wp_contaminant_values.source_id AS source_id,
                     wp_contaminant_values.value AS value,
-                    wp_contaminant_values.rank AS rank
+                    wp_contaminant_values.rank AS rank,
+                    wp_contaminant_values.not_detected AS not_detected
                 FROM wp_contaminant_values 
                 JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id 
                 WHERE
@@ -196,16 +327,18 @@ class PollutionTracker{
 
             $arr_contaminants = [];
             foreach ($contaminants as $contaminant){
-                $arr_contaminants[$contaminant->name]['name'] = $contaminant->name;
-                if ($contaminant->source_id==1){
-                    $arr_contaminants[$contaminant->name]['sediment']['value'] = $contaminant->value;
-                    $arr_contaminants[$contaminant->name]['sediment']['rank'] = $contaminant->rank;
-                    if (!in_array($site->id, $arr_sediments)) array_push($arr_sediments, $site->id);
-                }else{
-                    $arr_contaminants[$contaminant->name]['muscles']['value'] = $contaminant->value;
-                    $arr_contaminants[$contaminant->name]['muscles']['rank'] = $contaminant->rank;
-                    if (!in_array($site->id, $arr_muscles)) array_push($arr_muscles, $site->id);
-
+                if (!$contaminant->not_detected && $contaminant->rank!==null) { // Don't include Not-analysed (null value) items
+                    $arr_contaminants[$contaminant->name]['name'] = $contaminant->name;
+                    $arr_contaminants[$contaminant->name]['slug'] = $contaminant->slug;
+                    if ($contaminant->source_id == 1) {
+                        $arr_contaminants[$contaminant->name]['sediment']['value'] = $contaminant->value;
+                        $arr_contaminants[$contaminant->name]['sediment']['rank'] = $contaminant->rank;
+                        if (!in_array($site->id, $arr_sediments)) array_push($arr_sediments, $site->id);
+                    } else {
+                        $arr_contaminants[$contaminant->name]['mussels']['value'] = $contaminant->value;
+                        $arr_contaminants[$contaminant->name]['mussels']['rank'] = $contaminant->rank;
+                        if (!in_array($site->id, $arr_mussels)) array_push($arr_mussels, $site->id);
+                    }
                 }
             }
 
@@ -218,15 +351,18 @@ class PollutionTracker{
 
             $site_data = new stdClass();
             $site_data->name = $site->name;
+            $site_data->site_id = preg_replace('/\s/','',$site->site_id);
             $site_data->longitude = $site->longitude;
             $site_data->latitude = $site->latitude;
             $site_data->sampling_date = $site->sampling_date;
+            $site_data->sediment_rank = $site->sediment_rank;
+            $site_data->mussels_rank = $site->mussels_rank;
             $site_data->contaminants = $arr_contaminants_array;
             array_push($data['sites'], $site_data);
         }
 
         $data['sediment_contaminant_count'] = count($arr_sediments);
-        $data['muscles_contaminant_count'] = count($arr_muscles);
+        $data['mussels_contaminant_count'] = count($arr_mussels);
         return $data;
     }
 
@@ -235,7 +371,15 @@ class PollutionTracker{
 
         $sites = $wpdb->get_results('SELECT * FROM wp_sites ORDER BY latitude;');
 
-        $sql = $wpdb->prepare("SELECT s.name, s.id, v.value, v.rank FROM wp_sites s LEFT JOIN wp_contaminant_values v ON v.site_id = s.id WHERE v.source_id=%d AND v.contaminant_id=%d ORDER BY s.sort", $args['source_id'], $args['contaminant_id']);
+        $sql = $wpdb->prepare('
+        SELECT
+            wp_sites.*,
+            sediment.value as sediment_value,
+            mussels.value as mussels_value
+            FROM wp_sites 
+            LEFT OUTER JOIN wp_contaminant_values sediment ON sediment.site_id = wp_sites.id AND sediment.source_id=1 AND sediment.contaminant_id=%d
+            LEFT OUTER JOIN wp_contaminant_values mussels ON mussels.site_id = wp_sites.id AND mussels.source_id=2 AND mussels.contaminant_id=%1$d
+            ', $args['contaminant_id']);
         $result = $wpdb->get_results($sql);
         //error_log($sql);
         //error_log(print_r($result,true));;
@@ -321,9 +465,11 @@ class PTWalker extends Walker{
 
     // Tell Walker where to inherit it's parent and id values
     var $db_fields = array(
-        'parent' => 'parent_id',
+        //'parent' => 'parent_id',
         'id'     => 'id'
     );
+
+    private $curItem;
 
     /**
      * At the start of each element, output a <li> and <a> tag structure.
@@ -331,16 +477,25 @@ class PTWalker extends Walker{
      * Note: Menu objects include url and title properties, so we will use those.
      */
     function start_el( &$output, $item, $depth = 0, $args = array(), $id = 0 ) {
+        $this->curItem = $item;
         //print_r($item);
-        $output .= sprintf( "\n<li><a href='/contaminants/%s'%s>%s</a></li>\n",
-            $item->slug,
-            ( $item->object_id === get_the_ID() ) ? ' class="current"' : '',
+        //if ($item->name == 'Pesticides') return false;
+        $classes = [];
+        if ($item->object_id === get_the_ID()) $classes[]='current';
+        if ($item->is_group) $classes[]='is_group';
+        //$url = ($item->is_group)?'#':"/contaminants/" . $item->slug;
+        $url = "/contaminants/" . $item->slug;
+        $output .= sprintf( "\n<li class='%s'><a href='%s'>%s</a></li>\n",
+            implode(' ', $classes),
+            $url,
             $item->name
         );
     }
 
     function start_lvl(&$output, $depth=0, $args=array()) {
-        $output .= "\n<ul>\n";
+        //echo 'dump: ' . print_r($this->curItem,true);
+        //if ($this->curItem->name == 'Pesticides') return false;
+        $output .= "\n<ul class='" . $this->curItem->slug . "''>\n";
     }
 
     // Displays end of a level. E.g '</ul>'
