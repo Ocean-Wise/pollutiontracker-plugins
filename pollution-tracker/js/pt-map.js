@@ -87,7 +87,7 @@ var PollutionTracker = (function($){
                 PollutionTracker.buildMap({
                     id: 'map',
                     geojson: geojson,
-                    style: '/wp-content/plugins/pollution-tracker/map-style.json" . "'
+                    style: '/wp-content/plugins/pollution-tracker/map-style.json'
                 });
             }
         },
@@ -97,7 +97,7 @@ var PollutionTracker = (function($){
                 //center: L.latLng(49.5,-123.5),
                 maxZoom: 14,
                 minZoom: 4,
-                zoomSnap: 0.25,
+                //zoomSnap: 0.5,
                 zoomDelta: 1,
                 maxBounds: L.latLngBounds(L.latLng(60, -150), L.latLng(45, -100)),
                 //scrollWheelZoom: false
@@ -161,9 +161,10 @@ var PollutionTracker = (function($){
         },
 
         getFeatureByID: function(featureID){
-            return geojson.features.find(function(feature){
+            var arrFound =  $.grep(geojson.features, function(feature){
                 if (feature.properties.site_id == featureID) return true;
             });
+            return arrFound[0];
         },
 
         getPopupHTML: function (args) {
@@ -186,7 +187,7 @@ var PollutionTracker = (function($){
             strHTML += '</div>';
             strHTML += '<div class="site-ranking"><div class="content">';
             strHTML += '<h3>How this site compares</h3>';
-            if (sortby == 'sediment') strHTML += '<p>We collected ocean floor sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations to survey sea bed contaminants.</p>';
+            if (sortby == 'sediment') strHTML += '<p>We collected ocean floor sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations to survey sea bed contaminants.<br><br></p>';
             if (sortby == 'mussels') strHTML += '<p>We collected samples from filter feeding mussels in ' + geojson.counts[sortby] + ' coastal B.C. locations to survey contaminants in the water column.</p>';
             strHTML += '<div class="rank"><div class="graph"><div class="pointerContainer"><div class="pointer" style="left: ' + siteRankPercent + '%; background-color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent/100) + ';"><div class="pointer-label" style="color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent/100) + ';">' +  siteRank + '</div></div></div><div class="label">Better</div><div class="label">Worse</div></div>';
             strHTML += '<div class="lower-labels"><div class="label">' + geojson.counts[sortby] + '</div><div class="label">1</div></div>';
@@ -214,32 +215,10 @@ var PollutionTracker = (function($){
                 strHTML += '<strong>No data</strong>';
             }
 
-            _this.updateGridlines($('.map-wrap .panel .contaminants-graph'),0,maxValue);
             return strHTML;
         },
 
-        updateGridlines: function(graph, min, max){
-            graph.find('.gridline').remove();
-            var graphWidth = graph.width();
-            var range = max - min;
-            var preferredSteps = [10,5,4,2];
-            var minSpace = 40;
-            var divisions = [];
-            var result = [{percent:0,value:min}];
 
-            preferredSteps.some(function(divisor){
-                var percent = 1/(range/(range/divisor));
-                if (percent*graphWidth > minSpace){
-                    for(var x=0;x<divisor;x++){
-                        result.push({percent:x*percent,value:max*x*percent});
-                    }
-                    return result;
-                }
-            });
-            result.push({percent:100,value:max});
-            console.log(result);
-            return result;
-        },
 
         sort: function (prop, arr) {
             prop = prop.split('.');
@@ -286,6 +265,101 @@ var PollutionTracker = (function($){
 
             return hex(r) + hex(g) + hex(b);
         }
-    }
+    };
     return _this;
 })(jQuery);
+
+
+function GridLines(args){
+    $ = jQuery;
+
+    // args{graph, min, max, direction, decimalPlaces}
+
+    this.getNiceMax = function (max) {
+        return Number((parseInt(Number(max).toExponential().split('.')[0]) + 1) + 'e' + Number(max).toExponential().split('e')[1]);
+    };
+
+    var _this = this;
+    this.graph = args.graph;
+    this.preferredSteps = [10,8,5,4,2];
+    this.dataMin = args.min;
+    // Make the max a nicer number
+    //this.dataMax = max;
+    this.gridMax = this.getNiceMax(args.max);
+    //this.decimalPlaces = args.decimalPlaces | GridLines.getDecimalPlaces(args.max);
+
+
+    this.direction = args.direction;
+
+    $(window).on('resize', function(){
+        _this.updateGridlines();
+    });
+    this.updateGridlines();
+}
+
+
+/*
+GridLines.getDecimalPlaces = function (num) {
+    var decimals = Number(Number(num).toExponential().split('e')[1]);
+    decimals = (decimals < 0) ? Math.abs(decimals) + 1 : 0;
+    return decimals;
+};
+*/
+
+/*
+GridLines = {
+
+    // args{graph, min, max, direction, decimalPlaces}
+
+    getNiceMax: function (max) {
+        return Number((parseInt(Number(max).toExponential().split('.')[0]) + 1) + 'e' + Number(max).toExponential().split('e')[1]);
+    },
+
+    getDecimalPlaces: function (num) {
+        var decimals = Number(Number(num).toExponential().split('e')[1]);
+        decimals = (decimals < 0) ? Math.abs(decimals) + 1 : 0;
+        return decimals;
+    }
+};
+*/
+
+GridLines.prototype = {
+
+    updateGridlines: function(){
+        var _this = this;
+        var height = _this.graph.closest('table').height();
+        _this.graph.height(height);
+        console.log(height);
+        _this.graph.find('.gridline').remove();
+        var graphWidth = _this.graph.width();
+        var range = _this.gridMax - _this.dataMin;
+        var minSpace = 50;
+        var divisions = [];
+        var result = [{percent:0,value:_this.dataMin}];
+
+        _this.preferredSteps.some(function(divisor){
+            var percent = 1/(range/(range/divisor));
+            if (percent*graphWidth > minSpace){
+                for(var x=1;x<divisor;x++){
+                    result.push({percent:x*percent*100,value:_this.gridMax*x*percent});
+                }
+                return result;
+            }
+        });
+        result.push({percent:100,value:_this.gridMax});
+
+        for(var x=0;x<result.length;x++){
+            var percent = result[x].percent;
+            if (_this.direction == -1) percent = 100-percent;
+            var value = result[x].value;
+
+            var strValue = Number(String(value.toPrecision(8))).toString();//.toFixed(_this.decimalPlaces);
+            var line = $('<div class="gridline bottom-label"></div>');
+            line.css({left: percent + '%'});
+            line.attr('data-value', strValue);
+            _this.graph.append(line);
+        }
+        console.log(_this.dataMin,_this.gridMax,result);
+        return result;
+    },
+};

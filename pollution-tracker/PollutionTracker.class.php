@@ -30,6 +30,10 @@ class PollutionTracker{
         // Can't just use mapbox since it can't custer html markers/popups
         // Edit map style here: http://editor.openmaptiles.org
 
+        // Wanted this for array.find, but didn't seem to work for MS Edge
+        //wp_enqueue_script( 'polyfill', 'https://cdn.polyfill.io/v2/polyfill.min.js', array(), '20151215', false );
+
+
         wp_enqueue_script( 'leaflet', 'https://unpkg.com/leaflet@1.2.0/dist/leaflet.js', array(), '20151215', false );
         wp_enqueue_style( 'leaflet', 'https://unpkg.com/leaflet@1.2.0/dist/leaflet.css' );
 
@@ -166,13 +170,16 @@ class PollutionTracker{
         foreach($sites as $site){
             $groups = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE aggregate=1');
             foreach($groups as $group){
-                $arr_contaminant_ids = $wpdb->get_col("SELECT * FROM wp_contaminants WHERE parent_id=" . $group->id);
+                $arr_contaminant_ids = $wpdb->get_col("SELECT id FROM wp_contaminants WHERE parent_id=" . $group->id);
 
                 foreach($source_ids as $source_id) {
                     $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND value IS NOT NULL;";
                     $average_rank = $wpdb->get_col($sql);
+                    //echo $sql;
 
                     $average_rank = $average_rank[0];
+                    //echo "{$site->name}|{$group->name}{$source_id}={$average_rank}<br>";
+
                     //echo $average_rank . "\n";
                     if (is_null($average_rank)) $average_rank = 'NULL';
 
@@ -231,7 +238,7 @@ class PollutionTracker{
                     site_id=" . $site->id . " AND
                     source_id=" . $source_id . " AND
                     c.is_group IS NULL AND
-                    value >0;";
+                    value IS NOT NULL;"; // NA values are NULL, and will not be considered in our average
                 $average_rank = $wpdb->get_col($sql);
                 $average_rank = $average_rank[0];
 
@@ -320,10 +327,11 @@ class PollutionTracker{
                 FROM wp_contaminant_values 
                 JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id 
                 WHERE
-                    wp_contaminants.parent_id NOT IN(37,39) AND
+                    (wp_contaminants.parent_id IS NULL OR wp_contaminants.parent_id NOT IN(37,39)) AND
                     wp_contaminant_values.site_id = ' . $site->id . ' AND
                     wp_contaminant_values.rank IS NOT NULL
                 ORDER BY wp_contaminant_values.rank ASC');
+
 
             $arr_contaminants = [];
             foreach ($contaminants as $contaminant){
@@ -348,6 +356,7 @@ class PollutionTracker{
             }
 
             //error_log(print_r($arr_contaminants_array,true));
+            //echo print_r($arr_contaminants_array,true);
 
             $site_data = new stdClass();
             $site_data->name = $site->name;
