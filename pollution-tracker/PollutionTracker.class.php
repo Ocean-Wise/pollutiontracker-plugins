@@ -383,8 +383,10 @@ class PollutionTracker{
         $sql = $wpdb->prepare('
         SELECT
             wp_sites.*,
-            sediment.value as sediment_value,
-            mussels.value as mussels_value
+            sediment.value AS sediment_value,
+            mussels.value AS mussels_value,
+            sediment.not_detected AS sediment_not_detected,
+            mussels.not_detected AS mussels_not_detected
             FROM wp_sites 
             LEFT OUTER JOIN wp_contaminant_values sediment ON sediment.site_id = wp_sites.id AND sediment.source_id=1 AND sediment.contaminant_id=%d
             LEFT OUTER JOIN wp_contaminant_values mussels ON mussels.site_id = wp_sites.id AND mussels.source_id=2 AND mussels.contaminant_id=%1$d

@@ -6,7 +6,7 @@ var PollutionTracker = (function($){
         e.preventDefault();
         e.stopPropagation();
         $('body, .map-wrap').addClass('show-map');
-
+        $('body').removeClass('show-main-nav');
         _this.showMap();
     });
 
@@ -62,6 +62,8 @@ var PollutionTracker = (function($){
             if (arrHash[0] == '#Map') {
                 e.preventDefault();
                 _this.showMap();
+                $('body').removeClass('show-main-nav');
+
             }
             if (arrHash[1]){
                 var feature = _this.getFeatureByID(arrHash[1]);
@@ -333,7 +335,7 @@ GridLines.prototype = {
         _this.graph.find('.gridline').remove();
         var graphWidth = _this.graph.width();
         var range = _this.gridMax - _this.dataMin;
-        var minSpace = 50;
+        var minSpace = 60;
         var divisions = [];
         var result = [{percent:0,value:_this.dataMin}];
 
@@ -353,13 +355,20 @@ GridLines.prototype = {
             if (_this.direction == -1) percent = 100-percent;
             var value = result[x].value;
 
-            var strValue = Number(String(value.toPrecision(8))).toString();//.toFixed(_this.decimalPlaces);
+
+            // Fix ugly floating point issues and remove trailing zeros
+            //var strValue = Number(String(value.toPrecision(8))).toString();
+            var decimals = result[1].value.toExponential().split('e')[1];
+            if (decimals >=0) decimals = 0;
+            decimals = Math.abs(decimals);
+
+            var strValue = value.toFixed(decimals);
             var line = $('<div class="gridline bottom-label"></div>');
             line.css({left: percent + '%'});
             line.attr('data-value', strValue);
             _this.graph.append(line);
         }
-        console.log(_this.dataMin,_this.gridMax,result);
+        //console.log(_this.dataMin,_this.gridMax,result);
         return result;
     },
 };
