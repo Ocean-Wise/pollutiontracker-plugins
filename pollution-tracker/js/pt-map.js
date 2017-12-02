@@ -272,6 +272,22 @@ var PollutionTracker = (function($){
 })(jQuery);
 
 
+function PTPopup(args){
+    $ = jQuery;
+}
+
+PTPopup.prototype = {
+    open: function(contents, parent, x, y){
+        this.popup = $('<div class="pt-popup"></div>');
+        this.popup.html()
+        parent.append
+    },
+
+    close: function(){
+
+    }
+};
+
 function GridLines(args){
     $ = jQuery;
 
@@ -325,42 +341,58 @@ GridLines = {
 };
 */
 
+
 GridLines.prototype = {
 
     updateGridlines: function(){
         var _this = this;
-        var height = _this.graph.closest('table').height();
-        _this.graph.height(height);
-        console.log(height);
+        var table = _this.graph.closest('table');
         _this.graph.find('.gridline').remove();
+        var height = table.height();
+        _this.graph.height(height - table.find('tr:first-of-type').height() - table.find('tr:nth-of-type(2)').height());
         var graphWidth = _this.graph.width();
         var range = _this.gridMax - _this.dataMin;
         var minSpace = 60;
-        var divisions = [];
         var result = [{percent:0,value:_this.dataMin}];
 
         _this.preferredSteps.some(function(divisor){
             var percent = 1/(range/(range/divisor));
+
             if (percent*graphWidth > minSpace){
                 for(var x=1;x<divisor;x++){
-                    result.push({percent:x*percent*100,value:_this.gridMax*x*percent});
+                    var p = x*percent*100;
+                    p = Number(String(p.toPrecision(10))); // fix floating point precision
+
+                    var v = _this.gridMax*x*percent;
+                    v = Number(String(v.toPrecision(10))); // fix floating point precision
+
+                    result.push({percent:p,value:v});
                 }
                 return result;
             }
         });
         result.push({percent:100,value:_this.gridMax});
 
+        //console.log(result);
+
+        // Figure out how many decimal places we should use for the labels
+        var maxDecimals = 0;
+        for(var x=0; x<result.length;x++){
+            //var decimals = parseInt(result[x].value.toExponential().split('e')[1]);
+            var decimalPart = String(result[x].value).split('.')[1];
+            var decimals = decimalPart?decimalPart.length:0;
+            if (decimals > maxDecimals) maxDecimals = decimals;
+        }
+        //if (maxDecimals >=0) maxDecimals = 0;
+        //var decimals = Math.abs(maxDecimals);
+        var decimals = maxDecimals;
+        if (decimals > 3) decimals = 3;
+
+
         for(var x=0;x<result.length;x++){
             var percent = result[x].percent;
             if (_this.direction == -1) percent = 100-percent;
             var value = result[x].value;
-
-
-            // Fix ugly floating point issues and remove trailing zeros
-            //var strValue = Number(String(value.toPrecision(8))).toString();
-            var decimals = result[1].value.toExponential().split('e')[1];
-            if (decimals >=0) decimals = 0;
-            decimals = Math.abs(decimals);
 
             var strValue = value.toFixed(decimals);
             var line = $('<div class="gridline bottom-label"></div>');

@@ -378,7 +378,6 @@ class PollutionTracker{
     public static function getContaminantValues($args){
         global $wpdb;
 
-        $sites = $wpdb->get_results('SELECT * FROM wp_sites ORDER BY latitude;');
 
         $sql = $wpdb->prepare('
         SELECT
@@ -390,6 +389,7 @@ class PollutionTracker{
             FROM wp_sites 
             LEFT OUTER JOIN wp_contaminant_values sediment ON sediment.site_id = wp_sites.id AND sediment.source_id=1 AND sediment.contaminant_id=%d
             LEFT OUTER JOIN wp_contaminant_values mussels ON mussels.site_id = wp_sites.id AND mussels.source_id=2 AND mussels.contaminant_id=%1$d
+            ORDER BY sort;
             ', $args['contaminant_id']);
         $result = $wpdb->get_results($sql);
         //error_log($sql);
