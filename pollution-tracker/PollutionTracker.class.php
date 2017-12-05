@@ -16,12 +16,33 @@ class PollutionTracker{
         add_action( 'add_meta_boxes', array('PollutionTracker','addContaminantMetaBox') );
         add_action( 'save_post', array('PollutionTracker', 'savePost' ));
 
-
+        add_action( 'wp_ajax_get_contaminant_details', array('PollutionTracker', 'getContaminantDetails' ));
 
         // Request http://domain.org?updateRankings to update contaminant rankings
         if (isset($_GET['updateRankings'])) {
             self::updateContaminantRankings();
         }
+    }
+
+    // Same handler function...
+    public static function getContaminantDetails() {
+        global $wpdb;
+        $contaminant_id = intval( $_GET['contaminant_id'] );
+        $site_id = intval( $_GET['site_id'] );
+        $source_id = intval( $_GET['source_id'] );
+        $values = PollutionTracker::getChildContaminantValues(array('site_id'=>$site_id, 'contaminant_id'=>$contaminant_id, 'source_id'=>$source_id));
+        //error_log('Contaminant ajax:' . $contaminant_id);
+        //echo json_encode($values);
+
+        $str_html = "<table class='child-contaminants'>";
+        foreach ($values AS $contaminant){
+            $value = $contaminant->value;
+            if ($contaminant->not_detected) $value = "Not detected";
+            $str_html.="<tr><td>{$contaminant->name}</td><td>{$value}</td>";
+        }
+        $str_html.= "</table>";
+        echo $str_html;
+        wp_die();
     }
 
     public static function enqueueScripts(){
@@ -97,7 +118,7 @@ class PollutionTracker{
     public static function updateContaminantRankings(){
         global $wpdb;
 
-        error_log('Updading contaminate rankings');
+        error_log('Updading contaminant rankings');
 
         /* Kelsey says: (11/03/2017)
          * Once all individual contaminants are sorted and ranked in the database,
@@ -391,9 +412,39 @@ class PollutionTracker{
             LEFT OUTER JOIN wp_contaminant_values mussels ON mussels.site_id = wp_sites.id AND mussels.source_id=2 AND mussels.contaminant_id=%1$d
             ORDER BY sort;
             ', $args['contaminant_id']);
+        //echo $sql;
         $result = $wpdb->get_results($sql);
         //error_log($sql);
         //error_log(print_r($result,true));;
+
+        return $result;
+
+    }
+
+    public static function getChildContaminantValues($args){
+        global $wpdb;
+
+        $sql = $wpdb->prepare('SELECT id FROM wp_contaminants WHERE parent_id=%d', $args['contaminant_id']);
+        $contaminants = $wpdb->get_col($sql);
+        $str_contaminant_ids = implode(', ', $contaminants);
+
+        $sql = $wpdb->prepare('
+        SELECT
+            wp_contaminants.*,
+            v.value AS value,
+            v.not_detected AS not_detected
+            FROM wp_contaminants
+            LEFT JOIN wp_contaminant_values v ON v.contaminant_id = wp_contaminants.id AND v.source_id=%d AND v.contaminant_id IN (' . $str_contaminant_ids . ')
+            WHERE v.site_id=%d AND
+            v.value IS NOT NULL
+            ORDER BY value DESC;', $args['source_id'],$args['site_id']);
+        //error_log( $sql);
+        $result = array();
+        $result = $wpdb->get_results($sql);
+
+        //error_log($sql);
+        //error_log(print_r($result,true));
+        //error_log("Length: " . count($result));
 
         return $result;
 
@@ -429,6 +480,7 @@ class PollutionTracker{
         wp_nonce_field( 'my_meta_box_nonce', 'meta_box_nonce' );
 
         echo '<select name="contaminant_id">';
+        echo "<option value=''>Select contaminant</option>";
         foreach($contaminants as $item){
             echo "<option value='{$item->id}'" . (($item->id==$contaminant)?' selected':'') . ">{$item->name}</option>";
         }
@@ -460,7 +512,7 @@ class PollutionTracker{
         if( $contaminant_id ) {
             update_post_meta($post_id, 'contaminant_id', $contaminant_id);
             $slug = get_post_field( 'post_name', $post_id );
-            error_log("Set contaminant_id to {$contaminant_id} for page: {$slug}");
+            //error_log("Set contaminant_id to {$contaminant_id} for page: {$slug}");
             if ($slug) {
                 $wpdb->query("UPDATE wp_contaminants SET slug='" . $slug . "' WHERE id=$contaminant_id;");
             }

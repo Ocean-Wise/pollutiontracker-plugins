@@ -189,7 +189,7 @@ var PollutionTracker = (function($){
             strHTML += '</div>';
             strHTML += '<div class="site-ranking"><div class="content">';
             strHTML += '<h3>How this site compares</h3>';
-            if (sortby == 'sediment') strHTML += '<p>We collected ocean floor sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations to survey sea bed contaminants.<br><br></p>';
+            if (sortby == 'sediment') strHTML += '<p>We collected ocean floor sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations to survey sea bed contaminants.</p>';
             if (sortby == 'mussels') strHTML += '<p>We collected samples from filter feeding mussels in ' + geojson.counts[sortby] + ' coastal B.C. locations to survey contaminants in the water column.</p>';
             strHTML += '<div class="rank"><div class="graph"><div class="pointerContainer"><div class="pointer" style="left: ' + siteRankPercent + '%; background-color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent/100) + ';"><div class="pointer-label" style="color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent/100) + ';">' +  siteRank + '</div></div></div><div class="label">Better</div><div class="label">Worse</div></div>';
             strHTML += '<div class="lower-labels"><div class="label">' + geojson.counts[sortby] + '</div><div class="label">1</div></div>';
@@ -272,21 +272,6 @@ var PollutionTracker = (function($){
 })(jQuery);
 
 
-function PTPopup(args){
-    $ = jQuery;
-}
-
-PTPopup.prototype = {
-    open: function(contents, parent, x, y){
-        this.popup = $('<div class="pt-popup"></div>');
-        this.popup.html()
-        parent.append
-    },
-
-    close: function(){
-
-    }
-};
 
 function GridLines(args){
     $ = jQuery;
@@ -314,33 +299,6 @@ function GridLines(args){
     });
     this.updateGridlines();
 }
-
-
-/*
-GridLines.getDecimalPlaces = function (num) {
-    var decimals = Number(Number(num).toExponential().split('e')[1]);
-    decimals = (decimals < 0) ? Math.abs(decimals) + 1 : 0;
-    return decimals;
-};
-*/
-
-/*
-GridLines = {
-
-    // args{graph, min, max, direction, decimalPlaces}
-
-    getNiceMax: function (max) {
-        return Number((parseInt(Number(max).toExponential().split('.')[0]) + 1) + 'e' + Number(max).toExponential().split('e')[1]);
-    },
-
-    getDecimalPlaces: function (num) {
-        var decimals = Number(Number(num).toExponential().split('e')[1]);
-        decimals = (decimals < 0) ? Math.abs(decimals) + 1 : 0;
-        return decimals;
-    }
-};
-*/
-
 
 GridLines.prototype = {
 
