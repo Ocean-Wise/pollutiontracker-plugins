@@ -177,6 +177,11 @@ var PollutionTracker = (function($){
             var strHTML;
 
             var contaminants = safeRead(feature.properties, 'contaminants');
+            var hasData = false;
+
+            contaminants.forEach(function(contaminant){
+                if (contaminant.hasOwnProperty(sortby)) hasData = true;
+            });
 
             var siteRank = safeRead(feature.properties, sortby + '_rank');
             var siteRankPercent = 100 - ((siteRank-1)/(geojson.counts[sortby]-1))*100;
@@ -184,21 +189,26 @@ var PollutionTracker = (function($){
 
 
             strHTML = '<div class="header"><div class="close">&times;</div><h2 class="title">' + feature.properties.title + '</h2>';
-            strHTML += '<div class="subhead">Data collected on ' + feature.properties.sampling_date + '</div>';
+            strHTML += '<div class="subhead">' + ((hasData)?'Samples collected on ' + feature.properties.sampling_date:'&nbsp;') + '</div>';
             strHTML += '<ul class="tabs"><li data-tab="sediment">Sediment</li><li data-tab="mussels">Mussels</li></ul>';
             strHTML += '</div>';
             strHTML += '<div class="site-ranking"><div class="content">';
-            strHTML += '<h3>How this site compares</h3>';
-            if (sortby == 'sediment') strHTML += '<p>We collected ocean floor sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations to survey sea bed contaminants.</p>';
-            if (sortby == 'mussels') strHTML += '<p>We collected samples from filter feeding mussels in ' + geojson.counts[sortby] + ' coastal B.C. locations to survey contaminants in the water column.</p>';
-            strHTML += '<div class="rank"><div class="graph"><div class="pointerContainer"><div class="pointer" style="left: ' + siteRankPercent + '%; background-color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent/100) + ';"><div class="pointer-label" style="color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent/100) + ';">' +  siteRank + '</div></div></div><div class="label">Better</div><div class="label">Worse</div></div>';
-            strHTML += '<div class="lower-labels"><div class="label">' + geojson.counts[sortby] + '</div><div class="label">1</div></div>';
+            if (hasData) {
+
+                strHTML += '<h3>How this site compares</h3>';
+                if (sortby == 'sediment') strHTML += '<p>We collected nearshore ocean sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations. Contaminants measured in sediment from this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the highest level detected coast-wide. An overall average site ranking is shown below.</p>';
+                if (sortby == 'mussels') strHTML += '<p>We collected mussels from ' + geojson.counts[sortby] + ' coastal B.C. locations. Contaminants measured in mussels from this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the highest level detected coast-wide. An overall average site ranking is shown below.</p>';
+                strHTML += '<div class="rank"><div class="graph"><div class="pointerContainer"><div class="pointer" style="left: ' + siteRankPercent + '%; background-color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent / 100) + ';"><div class="pointer-label" style="color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent / 100) + ';">' + siteRank + '</div></div></div><div class="label">Better</div><div class="label">Worse</div></div>';
+                strHTML += '<div class="lower-labels"><div class="label">' + geojson.counts[sortby] + '</div><div class="label">1</div></div>';
+            }else{
+                strHTML += 'No data collected at this site';
+            }
             strHTML += '</div></div>';
 
-            if (contaminants) {
+            if (hasData) {
                 _this.sort(sortby, contaminants);
                 strHTML += "<div class='content'><h3>Most prevalent contaminants</h3>" +
-                    "<p>We found the highest concentrations of these contaminants at this site. (The graphs indicate how they compare to other sites we surveyed.)</p>";
+                    "<p>Levels of contaminants measured at this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the highest level detected coast-wide. Prevalence is not necessarily an indicator of toxic effects.</p>";
                     //"<table><tr><th>Name</th><th>SV</th><th>SR</th><th>MV</th><th>MR</th></tr>";
 
                 strHTML += '<div class="contaminants-graph"><div class="gridlines"><div class="gridline" data-value="' + geojson.counts[sortby] + '" data-label="Better"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline" data-value="1" data-label="Worse"></div></div>';
@@ -213,8 +223,6 @@ var PollutionTracker = (function($){
                 });
                 //strHTML += '</table></div>';
                 strHTML += '</div></div>';
-            } else {
-                strHTML += '<strong>No data</strong>';
             }
 
             return strHTML;

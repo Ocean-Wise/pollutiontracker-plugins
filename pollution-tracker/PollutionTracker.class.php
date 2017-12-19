@@ -16,6 +16,7 @@ class PollutionTracker{
         add_action( 'add_meta_boxes', array('PollutionTracker','addContaminantMetaBox') );
         add_action( 'save_post', array('PollutionTracker', 'savePost' ));
 
+        add_action( 'wp_ajax_nopriv_get_contaminant_details', array('PollutionTracker', 'getContaminantDetails' ));
         add_action( 'wp_ajax_get_contaminant_details', array('PollutionTracker', 'getContaminantDetails' ));
 
         // Request http://domain.org?updateRankings to update contaminant rankings
