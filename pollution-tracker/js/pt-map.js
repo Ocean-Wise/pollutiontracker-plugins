@@ -109,11 +109,13 @@ var PollutionTracker = (function($){
             _this.gl = L.mapboxGL({
                 accessToken: 'not required',
                 style: args.style,
+                updateInterval: 10
             }).addTo(_this.map);
 
-            /*map.on('viewlevelchange', function(e){
-                console.log(e);
-            });*/
+            _this.map.on('zoomend', function(e){
+                _this.gl._update();
+                //console.log(e);
+            });
 
             //map.setView(L.latLng(49.5,-123.5), 4 );
 
