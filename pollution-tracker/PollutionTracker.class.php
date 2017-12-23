@@ -60,7 +60,7 @@ class PollutionTracker{
         wp_enqueue_style( 'leaflet', 'https://unpkg.com/leaflet@1.2.0/dist/leaflet.css' );
 
         wp_enqueue_script( 'leaflet-clusterer', 'https://unpkg.com/leaflet.markercluster@1.2.0/dist/leaflet.markercluster.js', array(), '20151215', false );
-        wp_enqueue_style( 'leaflet-clusterer', plugin_dir_url(__FILE__) . '/css/MarkerCluster.css' );
+        wp_enqueue_style( 'leaflet-clusterer', plugin_dir_url(__FILE__) . 'css/MarkerCluster.css', false, filemtime(plugin_dir_path( __FILE__ ) . '/css/MarkerCluster.css') );
 
         wp_enqueue_script( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.js', array(), '20151215', false );
         wp_enqueue_style( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.css' );
@@ -69,6 +69,7 @@ class PollutionTracker{
 
 
         wp_enqueue_script( 'leaflet-mapbox', 'http://rawgit.com/mapbox/mapbox-gl-leaflet/master/leaflet-mapbox-gl.js', array(), '20151215', false );
+        //wp_enqueue_script( 'leaflet-esri', 'https://unpkg.com/esri-leaflet@2.1.1', array(), '20151215', false );
     }
 
     public static function mapShortcode($args){

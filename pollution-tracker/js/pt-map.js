@@ -106,23 +106,38 @@ var PollutionTracker = (function($){
             }).setView([51.5,-128], _this.currentZoom);
 
 
-            _this.gl = L.mapboxGL({
-                accessToken: 'not required',
-                style: args.style,
-                updateInterval: 10
-            }).addTo(_this.map);
+            /*if (location.hash.search(/esri/)>=0) {
+                L.esri.basemapLayer("Topographic").addTo(_this.map);
+            }else {*/
+                _this.map.attributionControl.addAttribution('<a href="http://www.openmaptiles.org/" target="_blank">© OpenMapTiles</a> <a href="http://www.openstreetmap.org/about/" target="_blank">© OpenStreetMap contributors</a>');
+                _this.map.attributionControl.setPrefix('');
+                _this.gl = L.mapboxGL({
+                    accessToken: 'not required',
+                    style: args.style,
+                    updateInterval: 10
+                }).addTo(_this.map);
+            //}
 
+            // Fix layer alignment problem that occasionally occurs
+            // @link https://github.com/mapbox/mapbox-gl-leaflet/issues/45
             _this.map.on('zoomend', function(e){
                 _this.gl._update();
                 //console.log(e);
             });
 
-            //map.setView(L.latLng(49.5,-123.5), 4 );
+
+
+            var customMarker = new L.Icon({
+                iconUrl: '/wp-content/plugins/pollution-tracker/marker-icon-0-2.png',
+                iconAnchor: [12,40]
+            });
+
 
 
             _this.markers = L.markerClusterGroup();
             var geoJsonLayer = L.geoJson(args.geojson, {
                 onEachFeature: function (feature, layer) {
+                    layer.setIcon(customMarker);
                     layer.on({
                         click: function(e) {
                             // Handle marker click
@@ -209,8 +224,8 @@ var PollutionTracker = (function($){
 
             if (hasData) {
                 _this.sort(sortby, contaminants);
-                strHTML += "<div class='content'><h3>Most prevalent contaminants</h3>" +
-                    "<p>Levels of contaminants measured at this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the highest level detected coast-wide. Prevalence is not necessarily an indicator of toxic effects.</p>";
+                strHTML += "<div class='content'><h3>Priority contaminants of concern</h3>" +
+                    "<p>Levels of contaminants measured at this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the most contaminated site, coast-wide. Rankings do not necessarily indicate toxic risks to sealife.</p>";
                     //"<table><tr><th>Name</th><th>SV</th><th>SR</th><th>MV</th><th>MR</th></tr>";
 
                 strHTML += '<div class="contaminants-graph"><div class="gridlines"><div class="gridline" data-value="' + geojson.counts[sortby] + '" data-label="Better"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline" data-value="1" data-label="Worse"></div></div>';
