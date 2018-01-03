@@ -345,16 +345,18 @@ class PollutionTracker{
 
             $arr_contaminants = [];
             foreach ($contaminants as $contaminant){
-                if (!$contaminant->not_detected && $contaminant->rank!==null) { // Don't include Not-analysed (null value) items
+                if ($contaminant->rank!==null) { // Don't include Not-analysed (null value) items
                     $arr_contaminants[$contaminant->name]['name'] = $contaminant->name;
                     $arr_contaminants[$contaminant->name]['slug'] = $contaminant->slug;
                     if ($contaminant->source_id == 1) {
                         $arr_contaminants[$contaminant->name]['sediment']['value'] = $contaminant->value;
                         $arr_contaminants[$contaminant->name]['sediment']['rank'] = $contaminant->rank;
+                        $arr_contaminants[$contaminant->name]['sediment']['not_detected'] = $contaminant->not_detected;
                         if (!in_array($site->id, $arr_sediments)) array_push($arr_sediments, $site->id);
                     } else {
                         $arr_contaminants[$contaminant->name]['mussels']['value'] = $contaminant->value;
                         $arr_contaminants[$contaminant->name]['mussels']['rank'] = $contaminant->rank;
+                        $arr_contaminants[$contaminant->name]['mussels']['not_detected'] = $contaminant->not_detected;
                         if (!in_array($site->id, $arr_mussels)) array_push($arr_mussels, $site->id);
                     }
                 }

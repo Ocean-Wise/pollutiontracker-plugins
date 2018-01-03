@@ -213,8 +213,8 @@ var PollutionTracker = (function($){
             if (hasData) {
 
                 strHTML += '<h3>How this site compares</h3>';
-                if (sortby == 'sediment') strHTML += '<p>We collected nearshore ocean sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations. Contaminants measured in sediment from this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the highest level detected coast-wide. An overall average site ranking is shown below.</p>';
-                if (sortby == 'mussels') strHTML += '<p>We collected mussels from ' + geojson.counts[sortby] + ' coastal B.C. locations. Contaminants measured in mussels from this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the highest level detected coast-wide. An overall average site ranking is shown below.</p>';
+                if (sortby == 'sediment') strHTML += '<p>We collected nearshore ocean sediment from ' + geojson.counts[sortby] + ' coastal B.C. locations. Contaminants measured in sediment from this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the most contaminated site coast-wide. An overall average site ranking is shown below.</p>';
+                if (sortby == 'mussels') strHTML += '<p>We collected mussels from ' + geojson.counts[sortby] + ' coastal B.C. locations. Contaminants measured in mussels from this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the most contaminated site coast-wide. An overall average site ranking is shown below.</p>';
                 strHTML += '<div class="rank"><div class="graph"><div class="pointerContainer"><div class="pointer" style="left: ' + siteRankPercent + '%; background-color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent / 100) + ';"><div class="pointer-label" style="color:#' + _this.getColorAtPosition('C60000', 'FFCB00', siteRankPercent / 100) + ';">' + siteRank + '</div></div></div><div class="label">Better</div><div class="label">Worse</div></div>';
                 strHTML += '<div class="lower-labels"><div class="label">' + geojson.counts[sortby] + '</div><div class="label">1</div></div>';
             }else{
@@ -225,21 +225,36 @@ var PollutionTracker = (function($){
             if (hasData) {
                 _this.sort(sortby, contaminants);
                 strHTML += "<div class='content'><h3>Priority contaminants of concern</h3>" +
-                    "<p>Levels of contaminants measured at this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the most contaminated site, coast-wide. Rankings do not necessarily indicate toxic risks to sealife.</p>";
+                    "<p>Levels of contaminants measured at this site are ranked relative to levels measured at all other sites. A rank of 1 indicates the most contaminated site coast-wide. Rankings do not necessarily indicate toxic risks to sealife.</p>";
                     //"<table><tr><th>Name</th><th>SV</th><th>SR</th><th>MV</th><th>MR</th></tr>";
 
                 strHTML += '<div class="contaminants-graph"><div class="gridlines"><div class="gridline" data-value="' + geojson.counts[sortby] + '" data-label="Better"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline" data-value="1" data-label="Worse"></div></div>';
                 contaminants.forEach(function (item) {
                     var rank = safeRead(item, sortby ,'rank');
-                    if (rank) {
+                    if (rank && item[sortby].not_detected!=1) {
                         var percent = 100 - (((rank-1) / (geojson.counts[sortby]-1)) * 100);
                         //strHTML += "<tr><td>" + item.name + "</td><td class='sediment values'>" + (safeRead(item,'sediment', 'value') || '--') + "</td><td class='sediment rank'>" + (safeRead(item,'sediment','rank')||'--') + "</td><td class='mussels value'>" + (safeRead(item,'mussels','value')||'--') + "</td><td class='mussels rank'>" + (safeRead(item,'mussels','rank')||'--') + "</td></tr>";
                         strHTML += '<div class="contaminant" data-id="' + item.id + '" data-rank="' + rank + '" data-slug="' + item.slug + '"><div class="name">' + item.name + '</div><div class="graph"><div class="bar"></div><div class="indicator" style="left:' + percent + '%; background-position: ' + percent + '%">' + rank +'</div></div></div>';
                         if (safeRead(item,sortby,'value') > maxValue) maxValue = item[sortby].value;
                     }
                 });
+
                 //strHTML += '</table></div>';
                 strHTML += '</div></div>';
+
+                var arrNotDetected = [];
+                contaminants.forEach(function (item) {
+                    if (safeRead(item, sortby, 'not_detected')==1){
+                        arrNotDetected.push(item);
+                    }
+                });
+                if (arrNotDetected.length){
+                    strHTML += '<div class="content" style="border-top: 1px solid #DBDBDB"><h3 class="marginTop">Not detected at this site</h3>';
+                    arrNotDetected.forEach(function(item){
+                       strHTML += '<a href="/contaminants/' + item.slug + '">' + item.name + "</a><br>";
+                    });
+                    strHTML += '</div>';
+                }
             }
 
             return strHTML;
