@@ -138,6 +138,7 @@ var PollutionTracker = (function($){
             var geoJsonLayer = L.geoJson(args.geojson, {
                 onEachFeature: function (feature, layer) {
                     layer.setIcon(customMarker);
+                    layer.bindTooltip(feature.properties.title,{direction:'right', offset:[18,-24]});
                     layer.on({
                         click: function(e) {
                             // Handle marker click
@@ -347,7 +348,7 @@ GridLines.prototype = {
         var table = _this.graph.closest('table');
         _this.graph.find('.gridline').remove();
         var height = table.height();
-        _this.graph.height(height - table.find('tr:first-of-type').height() - table.find('tr:nth-of-type(2)').height());
+        _this.graph.height(height - table.find('tr:first-of-type').height() - table.find('tr:nth-of-type(2)').height() - 20);
         var graphWidth = _this.graph.width();
         var range = _this.gridMax - _this.dataMin;
         var minSpace = 60;

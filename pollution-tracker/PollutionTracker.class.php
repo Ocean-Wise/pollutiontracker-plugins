@@ -120,7 +120,7 @@ class PollutionTracker{
     public static function updateContaminantRankings(){
         global $wpdb;
 
-        error_log('Updading contaminant rankings');
+        error_log('Updating contaminant rankings');
 
         /* Kelsey says: (11/03/2017)
          * Once all individual contaminants are sorted and ranked in the database,
@@ -163,7 +163,7 @@ class PollutionTracker{
             foreach ($contaminants as $contaminant) {
                 //error_log('Update ' . $source_id . ':' . print_r($contaminant,true));
                 $wpdb->query("SET @rank:=0;");
-                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d AND value >0 ORDER BY `value` DESC;", $contaminant->id, $source_id);
+                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d AND value > 0 ORDER BY `value` DESC;", $contaminant->id, $source_id);
                 $result = $wpdb->get_results($sql);
 
 
@@ -172,6 +172,7 @@ class PollutionTracker{
                 //error_log($sql);
                 $result = $wpdb->get_results($sql);
                 $item_count = $result[0]->item_count;
+                if ($contaminant->id == 50) error_log('count: ' . $item_count);
 
                 // Get what the max rank should be
                 $sql = $wpdb->prepare('SELECT COUNT(*) AS max_rank FROM wp_contaminant_values WHERE value > 0 AND contaminant_id=%d AND source_id=%d;', $contaminant->id, $source_id);
@@ -184,24 +185,26 @@ class PollutionTracker{
                 $result = $wpdb->get_results($sql);
 
                 // Set non-detects to last place
-                $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=%d WHERE value >=0 AND not_detected=1 AND contaminant_id=%d AND source_id=%d AND rank IS NULL;", $item_count+1, $contaminant->id, $source_id);
-                $result = $wpdb->get_results($sql);
+                if ($item_count>0) {
+                    $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=%d WHERE not_detected=1 AND contaminant_id=%d AND source_id=%d AND rank IS NULL;", $item_count + 1, $contaminant->id, $source_id);
+                    $result = $wpdb->get_results($sql);
 
-                // When values are tied, set rank to the same for both (the lower number)
-                if ($contaminant->id == 25) {
-                    $sql = $wpdb->prepare("SELECT v.value, COUNT(*) AS tie_count from wp_contaminant_values v where v.contaminant_id=%d and v.source_id=%d GROUP BY v.value;", $contaminant->id, $source_id);
+                    // When values are tied, set rank to the same for both (the lower number)
+                    $sql = $wpdb->prepare("SELECT v.value, v.not_detected, COUNT(*) AS tie_count FROM wp_contaminant_values v WHERE v.contaminant_id=%d AND v.source_id=%d GROUP BY v.value, v.not_detected;", $contaminant->id, $source_id);
                     $result = $wpdb->get_results($sql);
                     foreach ($result as $row) {
                         if ($row->tie_count > 1) {
-                            // Get rank of first item it tie set
-                            $sql = $wpdb->prepare("SELECT v.rank from wp_contaminant_values v WHERE v.contaminant_id=%d and source_id=%d AND CAST(v.value AS DECIMAL(10,8))=%f ORDER BY RANK LIMIT 1;", $contaminant->id, $source_id, $row->value);
+                            // Get rank of first item in tie set
+                            $sql = $wpdb->prepare("SELECT v.rank from wp_contaminant_values v WHERE v.contaminant_id=%d and source_id=%d AND not_detected=%d AND CAST(v.value AS DECIMAL(10,8))=%f ORDER BY RANK LIMIT 1;", $contaminant->id, $source_id, $row->not_detected, $row->value);
                             $result = $wpdb->get_results($sql);
                             $rank = $result[0]->rank;
-                            $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=%d WHERE contaminant_id=%d and source_id=%d AND CAST(value AS DECIMAL(10,8))=%f;", $rank, $contaminant->id, $source_id, $row->value);
+                            $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=%d WHERE contaminant_id=%d and source_id=%d AND not_detected=%d AND CAST(value AS DECIMAL(10,8))=%f;", $rank, $contaminant->id, $source_id, $row->not_detected, $row->value);
                             $result = $wpdb->get_results($sql);
                         }
                     }
                 }
+
+
 
 
             }
@@ -279,6 +282,7 @@ class PollutionTracker{
                     site_id=" . $site->id . " AND
                     source_id=" . $source_id . " AND
                     c.is_group IS NULL AND
+                    rank IS NOT NULL AND
                     value IS NOT NULL;"; // NA values are NULL, and will not be considered in our average
                 $average_rank = $wpdb->get_col($sql);
                 $average_rank = $average_rank[0];
