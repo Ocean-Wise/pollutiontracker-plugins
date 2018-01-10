@@ -342,14 +342,13 @@ class PollutionTracker{
                 JOIN wp_contaminants ON wp_contaminant_values.contaminant_id = wp_contaminants.id 
                 WHERE
                     (wp_contaminants.parent_id IS NULL OR wp_contaminants.parent_id NOT IN(37,39)) AND
-                    wp_contaminant_values.site_id = ' . $site->id . ' AND
-                    wp_contaminant_values.rank IS NOT NULL
+                    wp_contaminant_values.site_id = ' . $site->id . ' 
                 ORDER BY wp_contaminant_values.rank ASC');
 
 
             $arr_contaminants = [];
             foreach ($contaminants as $contaminant){
-                if ($contaminant->rank!==null) { // Don't include Not-analysed (null value) items
+                if ($contaminant->value!==null) { // Don't include Not-analysed (null value) items
                     $arr_contaminants[$contaminant->name]['name'] = $contaminant->name;
                     $arr_contaminants[$contaminant->name]['slug'] = $contaminant->slug;
                     if ($contaminant->source_id == 1) {
