@@ -151,17 +151,76 @@ class PollutionTracker{
          */
 
         // Apply rankings to all contaminants
-        $contaminants = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE is_group IS NULL');
+        $contaminants = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE parent_id IS NULL OR parent_id NOT IN (37,39)'); //WHERE is_group IS NULL
         $source_ids = $wpdb->get_col('SELECT DISTINCT source_id FROM wp_contaminant_values;');
 
         //error_log('Update rankings: ' . print_r($contaminants,true));
 
         $wpdb->query("UPDATE wp_contaminant_values SET rank=NULL;");
+        $sites = $wpdb->get_results('SELECT * FROM wp_sites');
+
+
+        // Apply rankings to contaminant groupings
+
+        /*Once all individual contaminants are sorted and ranked in the database,
+         * we’d need to take the average of the rankings for all of the individual ‘legacy pesticides’,
+         * and the same for ‘current use pesticides’ (lists of chemicals to be provided).
+         * This is because for the top 5 ranked contaminants/contaminant classes in the pop-ups,
+         * we’ll show ‘legacy pesticides’ and ‘current use pesticides’ rather than the individual chemicals.
+        */
+
+
+
+        foreach($sites as $site){
+            $groups = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE aggregate=1');
+            foreach($groups as $group){
+                $arr_contaminant_ids = $wpdb->get_col("SELECT id FROM wp_contaminants WHERE parent_id=" . $group->id);
+
+                foreach($source_ids as $source_id) {
+                    //$sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND value IS NOT NULL;";
+                    //$average_rank = $wpdb->get_col($sql);
+
+                    //$average_rank = $average_rank[0];
+                    //if (is_null($average_rank)) $average_rank = 'NULL';
+
+                    // Remove old aggregate values
+                    $sql = $wpdb->prepare("DELETE FROM wp_contaminant_values WHERE site_id=%d AND contaminant_id=%d AND source_id=%d;", $site->id, $group->id, $source_id);
+                    $result = $wpdb->get_results($sql);
+
+                    $sql = "SELECT * FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id;
+                    $result = $wpdb->get_results($sql);
+                    $child_values_count = count($result);
+                    $not_detected = 1;
+                    foreach($result as $row) if ($row->not_detected==0) $not_detected = 0;
+
+                    if ($child_values_count) {
+
+                        // Upsert value
+                        //$sql = "INSERT INTO wp_contaminant_values (site_id, contaminant_id, source_id, rank, not_detected) VALUES ({$site->id}, {$group->id}, {$source_id}, {$average_rank}, {$not_detected}) ON DUPLICATE KEY UPDATE rank={$average_rank};";
+                        //error_log($sql);
+                        //$result = $wpdb->get_results($sql);
+
+                        // Update aggregate values
+                        $sql = "SELECT SUM(value) AS value FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id;
+                        $value = $wpdb->get_col($sql);
+                        $value = $value[0];
+
+                        if (is_null($value)) $value = "NULL";
+
+                        $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET value=" . $value . " WHERE contaminant_id=%d AND site_id=%d AND source_id=%d", $group->id, $site->id, $source_id);
+                        $sql = "INSERT INTO wp_contaminant_values (site_id, contaminant_id, source_id, value, not_detected) VALUES ({$site->id}, {$group->id}, {$source_id}, {$value}, {$not_detected});";
+
+                        $wpdb->get_results($sql);
+                    }
+                }
+            }
+        }
 
 
         foreach($source_ids as $source_id) {
             foreach ($contaminants as $contaminant) {
                 //error_log('Update ' . $source_id . ':' . print_r($contaminant,true));
+                //error_log('Update ' . $source_id . ": {$contaminant->name}"); // . print_r($contaminant,true));
                 $wpdb->query("SET @rank:=0;");
                 $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=@rank:=@rank+1 WHERE contaminant_id=%d AND source_id=%d AND value > 0 ORDER BY `value` DESC;", $contaminant->id, $source_id);
                 $result = $wpdb->get_results($sql);
@@ -172,7 +231,7 @@ class PollutionTracker{
                 //error_log($sql);
                 $result = $wpdb->get_results($sql);
                 $item_count = $result[0]->item_count;
-                if ($contaminant->id == 50) error_log('count: ' . $item_count);
+                //if ($contaminant->id == 50) error_log('count: ' . $item_count);
 
                 // Get what the max rank should be
                 $sql = $wpdb->prepare('SELECT COUNT(*) AS max_rank FROM wp_contaminant_values WHERE value > 0 AND contaminant_id=%d AND source_id=%d;', $contaminant->id, $source_id);
@@ -195,72 +254,19 @@ class PollutionTracker{
                     foreach ($result as $row) {
                         if ($row->tie_count > 1) {
                             // Get rank of first item in tie set
-                            $sql = $wpdb->prepare("SELECT v.rank from wp_contaminant_values v WHERE v.contaminant_id=%d and source_id=%d AND not_detected=%d AND CAST(v.value AS DECIMAL(10,8))=%f ORDER BY RANK LIMIT 1;", $contaminant->id, $source_id, $row->not_detected, $row->value);
+                            $sql = $wpdb->prepare("SELECT v.rank from wp_contaminant_values v WHERE v.contaminant_id=%d and source_id=%d AND not_detected=%d AND CAST(v.value AS DECIMAL(10,6))=%f ORDER BY RANK LIMIT 1;", $contaminant->id, $source_id, $row->not_detected, $row->value);
                             $result = $wpdb->get_results($sql);
                             $rank = $result[0]->rank;
-                            $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=%d WHERE contaminant_id=%d and source_id=%d AND not_detected=%d AND CAST(value AS DECIMAL(10,8))=%f;", $rank, $contaminant->id, $source_id, $row->not_detected, $row->value);
+                            $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET rank=%d WHERE contaminant_id=%d and source_id=%d AND not_detected=%d AND CAST(value AS DECIMAL(10,6))=%f;", $rank, $contaminant->id, $source_id, $row->not_detected, $row->value);
                             $result = $wpdb->get_results($sql);
                         }
                     }
                 }
-
-
-
-
             }
         }
 
-        // Apply rankings to contaminant groupings
 
-        /*Once all individual contaminants are sorted and ranked in the database,
-         * we’d need to take the average of the rankings for all of the individual ‘legacy pesticides’,
-         * and the same for ‘current use pesticides’ (lists of chemicals to be provided).
-         * This is because for the top 5 ranked contaminants/contaminant classes in the pop-ups,
-         * we’ll show ‘legacy pesticides’ and ‘current use pesticides’ rather than the individual chemicals.
-        */
-        $sites = $wpdb->get_results('SELECT * FROM wp_sites');
-        foreach($sites as $site){
-            $groups = $wpdb->get_results('SELECT * FROM wp_contaminants WHERE aggregate=1');
-            foreach($groups as $group){
-                $arr_contaminant_ids = $wpdb->get_col("SELECT id FROM wp_contaminants WHERE parent_id=" . $group->id);
 
-                foreach($source_ids as $source_id) {
-                    $sql = "SELECT AVG(rank) as rank FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id . " AND value IS NOT NULL;";
-                    $average_rank = $wpdb->get_col($sql);
-
-                    $average_rank = $average_rank[0];
-                    if (is_null($average_rank)) $average_rank = 'NULL';
-
-                    // Remove old aggregate values
-                    $sql = $wpdb->prepare("DELETE FROM wp_contaminant_values WHERE site_id=%d AND contaminant_id=%d AND source_id=%d;", $site->id, $group->id, $source_id);
-                    $result = $wpdb->get_results($sql);
-
-                    $sql = "SELECT * FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id;
-                    $result = $wpdb->get_results($sql);
-                    $child_values_count = count($result);
-                    $not_detected = 1;
-                    foreach($result as $row) if ($row->not_detected==0) $not_detected = 0;
-
-                    if ($child_values_count) {
-
-                        // Upsert value
-                        $sql = "INSERT INTO wp_contaminant_values (site_id, contaminant_id, source_id, rank, not_detected) VALUES ({$site->id}, {$group->id}, {$source_id}, {$average_rank}, {$not_detected}) ON DUPLICATE KEY UPDATE rank={$average_rank};";
-                        //error_log($sql);
-                        $result = $wpdb->get_results($sql);
-
-                        // Update aggregate values
-                        $sql = "SELECT SUM(value) AS value FROM wp_contaminant_values WHERE contaminant_id IN(" . implode(',', $arr_contaminant_ids) . ") AND site_id=" . $site->id . " AND source_id=" . $source_id;
-                        $value = $wpdb->get_col($sql);
-                        $value = $value[0];
-
-                        if (is_null($value)) $value = "NULL";
-
-                        $sql = $wpdb->prepare("UPDATE wp_contaminant_values SET value=" . $value . " WHERE contaminant_id=%d AND site_id=%d AND source_id=%d", $group->id, $site->id, $source_id);
-                        $wpdb->get_results($sql);
-                    }
-                }
-            }
-        }
 
 
         // Out of all 51 sites, average the individual contaminant rankings
@@ -281,7 +287,7 @@ class PollutionTracker{
                     WHERE
                     site_id=" . $site->id . " AND
                     source_id=" . $source_id . " AND
-                    c.is_group IS NULL AND
+                    
                     rank IS NOT NULL AND
                     value IS NOT NULL;"; // NA values are NULL, and will not be considered in our average
                 $average_rank = $wpdb->get_col($sql);
