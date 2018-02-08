@@ -3472,7 +3472,7 @@
         ]
       ],
       "layout": {
-        "text-field": "{name_en}",
+        "text-field": "{name}",
         "text-font": [
           "Roboto Regular"
         ],
