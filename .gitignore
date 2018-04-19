@@ -2,3 +2,5 @@
 !.gitignore
 !/pollution-tracker/**/
 !/pollution-tracker
+!/pt-database-editor/**/
+!/pt-database-editor
