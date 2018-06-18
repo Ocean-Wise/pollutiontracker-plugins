@@ -15,7 +15,7 @@
     },
     "openmaptiles": {
       "type": "vector",
-      "url": "https://free.tilehosting.com/data/v3.json?key=tXiQqN3lIgskyDErJCeY"
+      "url": "https://free.tilehosting.com/data/v3.json?key=0rAB6tsFztiCbILuGHHo"
     }
   },
   "sprite": "https://rawgit.com/lukasmartinelli/osm-liberty/gh-pages/sprites/osm-liberty",
