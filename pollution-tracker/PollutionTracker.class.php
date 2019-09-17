@@ -156,8 +156,17 @@ class PollutionTracker{
 
         //error_log('Update rankings: ' . print_r($contaminants,true));
 
+
+
+	    // Remove values for disabled sites
+	    $sites = $wpdb->get_results('SELECT * FROM wp_sites WHERE enabled=0');
+	    foreach($sites as $site) {
+		    $sql    = $wpdb->prepare( "DELETE FROM wp_contaminant_values WHERE site_id=%d;", $site->id );
+		    $result = $wpdb->get_results( $sql );
+	    }
+
         $wpdb->query("UPDATE wp_contaminant_values SET rank=NULL;");
-        $sites = $wpdb->get_results('SELECT * FROM wp_sites');
+        $sites = $wpdb->get_results('SELECT * FROM wp_sites WHERE enabled=1');
 
 
         // Apply rankings to contaminant groupings
@@ -328,7 +337,7 @@ class PollutionTracker{
         global $wpdb;
 
         $data = ['sites'=>[]];
-        $sites = $wpdb->get_results('SELECT * FROM wp_sites');
+        $sites = $wpdb->get_results('SELECT * FROM wp_sites WHERE enabled=1');
         $arr_contaminants = [];
         $arr_sediments = [];
         $arr_mussels = [];
@@ -412,6 +421,7 @@ class PollutionTracker{
             FROM wp_sites 
             LEFT OUTER JOIN wp_contaminant_values sediment ON sediment.site_id = wp_sites.id AND sediment.source_id=1 AND sediment.contaminant_id=%d
             LEFT OUTER JOIN wp_contaminant_values mussels ON mussels.site_id = wp_sites.id AND mussels.source_id=2 AND mussels.contaminant_id=%1$d
+            WHERE wp_sites.enabled=1
             ORDER BY sort;
             ', $args['contaminant_id']);
         //echo $sql;
