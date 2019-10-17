@@ -2,7 +2,7 @@
 /*
 Plugin Name:  Pollution Tracker
 Description:  Custom functionality for Pollution Tracker website
-Version:      20171031
+Version:      20191016
 Author:       smashLAB
 Author URI:   http://smashlab.com
 */

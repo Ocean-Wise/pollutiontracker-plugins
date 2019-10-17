@@ -56,14 +56,19 @@ class PollutionTracker{
         //wp_enqueue_script( 'polyfill', 'https://cdn.polyfill.io/v2/polyfill.min.js', array(), '20151215', false );
 
 
-        wp_enqueue_script( 'leaflet', 'https://unpkg.com/leaflet@1.2.0/dist/leaflet.js', array(), '20151215', false );
-        wp_enqueue_style( 'leaflet', 'https://unpkg.com/leaflet@1.2.0/dist/leaflet.css' );
+        wp_enqueue_script( 'leaflet', 'https://unpkg.com/leaflet@1.5.1/dist/leaflet.js', array(), '20151215', false );
+        wp_enqueue_style( 'leaflet', 'https://unpkg.com/leaflet@1.5.1/dist/leaflet.css' );
 
         wp_enqueue_script( 'leaflet-clusterer', 'https://unpkg.com/leaflet.markercluster@1.2.0/dist/leaflet.markercluster.js', array(), '20151215', false );
         wp_enqueue_style( 'leaflet-clusterer', plugin_dir_url(__FILE__) . 'css/MarkerCluster.css', false, filemtime(plugin_dir_path( __FILE__ ) . '/css/MarkerCluster.css') );
 
-        wp_enqueue_script( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.js', array(), '20151215', false );
-        wp_enqueue_style( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.css' );
+        /*wp_enqueue_script( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.js', array(), '20151215', false );
+        wp_enqueue_style( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v0.41.0/mapbox-gl.css' );*/
+
+	    wp_enqueue_script( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v1.4.1/mapbox-gl.js', array(), '20151215', false );
+	    wp_enqueue_style( 'mapbox', 'https://api.tiles.mapbox.com/mapbox-gl-js/v1.4.1/mapbox-gl.css' );
+
+
 
         wp_enqueue_script( 'pt-map', plugin_dir_url(__FILE__) . '/js/pt-map.js', array('jquery'), filemtime(plugin_dir_path( __FILE__ ) . '/js/pt-map.js'), false );
 
@@ -525,7 +530,7 @@ class PollutionTracker{
             update_post_meta($post_id, 'contaminant_id', $contaminant_id);
             $slug = get_post_field( 'post_name', $post_id );
             //error_log("Set contaminant_id to {$contaminant_id} for page: {$slug}");
-            if ($slug) {
+            if ($slug && !wp_is_post_autosave($post_id)) {
                 $wpdb->query("UPDATE wp_contaminants SET slug='" . $slug . "' WHERE id=$contaminant_id;");
             }
         }

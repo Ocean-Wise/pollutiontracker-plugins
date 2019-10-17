@@ -89,7 +89,7 @@ var PollutionTracker = (function($){
                 PollutionTracker.buildMap({
                     id: 'map',
                     geojson: geojson,
-                    style: '/wp-content/plugins/pollution-tracker/map-style.json'
+                    //style: '/wp-content/plugins/pollution-tracker/map-style.json'
                 });
             }
         },
@@ -104,6 +104,8 @@ var PollutionTracker = (function($){
                 maxBounds: L.latLngBounds(L.latLng(60, -150), L.latLng(45, -100)),
                 //scrollWheelZoom: false
             }).setView([51.5,-128], _this.currentZoom);
+
+            L.tileLayer('http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png').addTo(_this.map);
 
 
             /*if (location.hash.search(/esri/)>=0) {
